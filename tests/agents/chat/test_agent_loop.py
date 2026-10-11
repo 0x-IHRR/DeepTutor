@@ -824,6 +824,88 @@ async def test_empty_finish_gets_one_nudge_then_recovers(
 
 
 @pytest.mark.asyncio
+async def test_empty_round_nudge_keeps_multimodal_user_parts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A nudge must extend a multimodal user message, never stringify it.
+
+    A chat PDF's embedded images ride in the trailing user message's content
+    parts. A round that finishes with nothing to replay leaves that message
+    trailing, so the recovery directive is appended to it; rebuilding the
+    message as a string folds every ``data:...;base64,`` payload into prompt
+    text and the next round bills image bytes as language tokens.
+    """
+    image = {"type": "image_url", "image_url": {"url": "data:image/png;base64,YWJj"}}
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "[Attached Documents]\nQuestion sheet"},
+                image,
+            ],
+        }
+    ]
+    client = _ScriptedChatClient(
+        [
+            # Round 1: an empty finish — no text, no reasoning, no tool call.
+            [_llm_chunk(finish_reason="stop")],
+            # Round 2 (after the nudge): a real answer.
+            [_llm_chunk(content="Here is the real answer.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    pipeline._model_turn_start = 0
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    monkeypatch.setattr(pipeline, "_build_loop_messages", lambda *_args, **_kwargs: messages)
+
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="Solve it"))
+
+    assert client.call_count == 2
+    durable = messages[0]["content"]
+    assert isinstance(durable, list)
+    assert [part["type"] for part in durable] == ["text", "image_url"]
+    assert durable[0]["text"].startswith("[Attached Documents]\nQuestion sheet")
+    assert "internal reasoning" in durable[0]["text"]
+    assert durable[1] == image
+    # The round the provider receives still carries the image as an image.
+    wire = client.calls[1]["messages"][-1]["content"]
+    assert any(part.get("type") == "image_url" for part in wire)
+    result = _result(events)
+    assert result.metadata["response"] == "Here is the real answer."
+    assert result.metadata["completed"] is True
+
+
+@pytest.mark.asyncio
+async def test_pure_image_message_gets_its_own_directive_part(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A message holding only images has no text part to extend."""
+    image = {"type": "image_url", "image_url": {"url": "data:image/png;base64,YWJj"}}
+    messages = [{"role": "user", "content": [image]}]
+    client = _ScriptedChatClient(
+        [
+            [_llm_chunk(finish_reason="stop")],
+            [_llm_chunk(content="Answered from the image.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    pipeline._model_turn_start = 0
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    monkeypatch.setattr(pipeline, "_build_loop_messages", lambda *_args, **_kwargs: messages)
+
+    await _run(pipeline, UnifiedContext(session_id="s1", user_message="What is this?"))
+
+    durable = messages[0]["content"]
+    assert [part["type"] for part in durable] == ["image_url", "text"]
+    assert "internal reasoning" in durable[1]["text"]
+    assert durable[0] == image
+
+
+@pytest.mark.asyncio
 async def test_explore_context_pre_pass_seeds_loop_without_polluting_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
