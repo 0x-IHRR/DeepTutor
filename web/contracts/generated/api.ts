@@ -15083,6 +15083,11 @@ export interface components {
        * @default null
        */
       readonly selection: string | null;
+      /**
+       * Time Seconds
+       * @default null
+       */
+      readonly time_seconds: number | null;
     };
     /** RebuildBookRequest */
     readonly RebuildBookRequest: {
