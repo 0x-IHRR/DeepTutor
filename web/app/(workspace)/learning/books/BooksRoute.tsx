@@ -1,6 +1,5 @@
 'use client'
 
-import { PageToolbar } from '@/components/layout/PageToolbar'
 import { Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Loader2, MessageSquare } from 'lucide-react'
@@ -1008,26 +1007,7 @@ function BookPageInner() {
     ? 'opening' : view
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col">
-      {!['list', 'creator'].includes(displayView) && (
-        <PageToolbar>
-          <div className="dt-toolbar-identity">
-            <button type="button" onClick={() => void handleSelectBook(null)} className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
-              <ArrowLeft size={14} />{t('All books')}
-            </button>
-            <span className="dt-toolbar-separator" aria-hidden>/</span>
-            <span className="dt-toolbar-title">{detail?.book.title || pendingBook?.title || t('Books')}</span>
-          </div>
-          {displayView === 'reader' && (
-            <div className="dt-toolbar-actions">
-              <button type="button" aria-pressed={chatOpen} onClick={() => setChatOpen(value => !value)} className="inline-flex items-center gap-1.5 px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
-                <MessageSquare size={16} />{t('Chat')}
-              </button>
-            </div>
-          )}
-        </PageToolbar>
-      )}
-      <div className="flex min-h-0 flex-1">
+    <div className="flex h-full w-full">
       {displayView !== 'list' && displayView !== 'creator' && displayView !== 'opening' && (
         <BookSidebar
           book={detail?.book || pendingBook || null}
@@ -1242,6 +1222,16 @@ function BookPageInner() {
           </div>
         </div>
 
+        {displayView === 'reader' && !chatOpen && (
+          <button
+            onClick={() => setChatOpen(true)}
+            className="absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] shadow-lg hover:opacity-90"
+          >
+            <MessageSquare className="h-4 w-4" />
+            {t('Chat')}
+          </button>
+        )}
+
         {displayView === 'reader' && chatOpen && (
           <BookChatPanel
             book={detail?.book || null}
@@ -1253,7 +1243,6 @@ function BookPageInner() {
           />
         )}
       </main>
-      </div>
     </div>
   )
 }

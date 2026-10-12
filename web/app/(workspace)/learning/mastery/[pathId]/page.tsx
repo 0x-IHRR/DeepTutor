@@ -1,6 +1,5 @@
 "use client";
 
-import { PageToolbar } from '@/components/layout/PageToolbar'
 import { PageContainer, PAGE_DESCRIPTION_CLASS } from '@/components/layout/FeaturePage'
 import { scopedUrl } from "@/lib/workspace-scope";
 import { MASTERY_HOME, masterySessionRoute as existingMasterySessionRoute, masterySessionsRoute } from "@/lib/learning-routes";
@@ -320,9 +319,8 @@ export default function MasteryTopicPage() {
     // no second column to balance, and a fixed-height stack there would just
     // be three tiny scrollers.
     <main className="mastery-shell flex h-full flex-col overflow-y-auto [scrollbar-gutter:stable]">
-
-        <PageToolbar className="sticky top-0 z-20">
-          <div className="dt-toolbar-identity">
+      <PageContainer className="flex min-h-0 flex-1 flex-col pb-40 sm:pb-10">
+        <div className="flex items-center justify-between gap-3">
           <Link
             href={scopedUrl(MASTERY_HOME)}
             className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
@@ -330,10 +328,7 @@ export default function MasteryTopicPage() {
             <ArrowLeft className="h-3.5 w-3.5" />
             {t("Learning topics")}
           </Link>
-            <span className="dt-toolbar-separator" aria-hidden>/</span>
-            <span className="dt-toolbar-title">{displayName}</span>
-          </div>
-          <div className="dt-toolbar-actions">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={(event) => openEditor(event.currentTarget)}
@@ -369,9 +364,8 @@ export default function MasteryTopicPage() {
               </div>
             </details>
           </div>
-        </PageToolbar>
+        </div>
 
-      <PageContainer className="flex min-h-0 flex-1 flex-col pb-40 sm:pb-10">
         <header className="dt-page-header mt-5 mb-6 flex flex-col gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-3">

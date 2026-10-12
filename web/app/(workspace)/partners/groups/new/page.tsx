@@ -74,13 +74,14 @@ export default function NewPartnerGroupPage() {
   };
 
   return (
-    <FeaturePage breadcrumb={
+    <FeaturePage>
       <Link
         href="/partners"
-        className="inline-flex items-center gap-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+        className="mb-5 inline-flex items-center gap-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
       >
         <ArrowLeft size={14} /> {t("Partners")}
-      </Link>}>
+      </Link>
+
       <PageHeader title={t("Create a Partner Group")} description={t("Choose at least two Partners, then how they should discuss.")} />
 
       {/* A live card of the thing being made: emoji, colour and name only mean

@@ -1,6 +1,5 @@
 "use client";
 
-import { PageToolbar } from '@/components/layout/PageToolbar'
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -250,9 +249,10 @@ export default function NotebookConsole({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--background)]">
-      <PageToolbar>
-        <div className="dt-toolbar-identity">
+    <div className="flex h-full min-h-0 bg-[var(--background)]">
+      {/* ── Notebook rail ─────────────────────────────────── */}
+      <aside className="flex w-[250px] shrink-0 flex-col border-r border-[var(--border)]">
+        <div className="flex flex-col gap-2.5 px-3 pb-2.5 pt-3">
           <Link
             href="/space"
             className="group inline-flex w-fit items-center gap-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
@@ -262,19 +262,22 @@ export default function NotebookConsole({
               strokeWidth={1.8}
               className="transition-transform group-hover:-translate-x-0.5"
             />
-            {t('navigation.resources')}
+            {t("Learning Space")}
           </Link>
-          <span className="dt-toolbar-separator" aria-hidden>
-            /
+
+          <div className="flex items-center justify-between">
+            <h1 className="flex items-center gap-1.5 font-serif text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
+              <NotebookPen size={14} strokeWidth={1.7} />
+              {t("Notebooks")}
+              <span className="rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-normal tabular-nums text-[var(--muted-foreground)]">
+                {scopedNotebooks.length}
               </span>
-          <h1 className="dt-toolbar-title">{t('Notebooks')}</h1>
-        </div>
-        <div className="dt-toolbar-actions">
-          <Tooltip label={t('New notebook')} side="top">
+            </h1>
+            <Tooltip label={t("New notebook")} side="top">
               <button
                 type="button"
-              onClick={() => setCreating(v => !v)}
-              aria-label={t('New notebook')}
+                onClick={() => setCreating((v) => !v)}
+                aria-label={t("New notebook")}
                 aria-expanded={creating}
                 className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
               >
@@ -282,20 +285,6 @@ export default function NotebookConsole({
               </button>
             </Tooltip>
           </div>
-      </PageToolbar>
-      <div className="flex min-h-0 flex-1">
-        {/* ── Notebook rail ─────────────────────────────────── */}
-        <aside className="flex w-[250px] shrink-0 flex-col border-r border-[var(--border)]">
-          <div className="flex flex-col gap-2.5 px-3 pb-2.5 pt-3">
-            <div className="flex items-center justify-between">
-              <h2 className="flex items-center gap-1.5 font-sans text-[13px] font-semibold tracking-tight text-[var(--foreground)]">
-                <NotebookPen size={14} strokeWidth={1.7} />
-                {t('Notebooks')}
-                <span className="rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-normal tabular-nums text-[var(--muted-foreground)]">
-                  {scopedNotebooks.length}
-                </span>
-              </h2>
-            </div>
 
           {creating && (
             <div className="flex flex-col gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2">
@@ -680,7 +669,6 @@ export default function NotebookConsole({
         )}
       </section>
 
-      </div>
       <ConfirmDialog
         open={confirmingDelete && Boolean(selected)}
         title={t("Delete this notebook?")}

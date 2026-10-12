@@ -34,7 +34,12 @@ export default function SpaceMain({
   const isDashboard = pathname === "/space";
 
   return (
-    <FeaturePage breadcrumb={!isDashboard && <BackToHub />}>
+    <FeaturePage>
+      {!isDashboard && (
+        <div className="mb-5">
+          <BackToHub />
+        </div>
+      )}
       {['/space/skills', '/space/mcp'].includes(pathname) && (
         <div className="mb-5 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--muted-foreground)]">
           <ResourceLibraryNote />

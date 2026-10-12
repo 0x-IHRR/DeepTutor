@@ -1,6 +1,5 @@
 "use client";
 
-import { PageToolbar } from '@/components/layout/PageToolbar'
 import { scopedUrl } from "@/lib/workspace-scope";
 import { MASTERY_HOME, masterySessionsRoute, masteryTopicRoute } from "@/lib/learning-routes";
 
@@ -575,7 +574,7 @@ export function MasteryStudy({
           as a single "where am I" statement, and the ring + count are one
           unit rather than a ring on the left and its own number on the
           right saying the same thing twice. */}
-      <PageToolbar>
+      <header className="flex h-[56px] shrink-0 items-center gap-1 border-b border-[var(--border)] bg-[var(--background)]/95 px-3 backdrop-blur sm:px-4">
         <Tooltip label={t("Learning topics")} side="bottom">
           <Link
             href={masteryTopicRoute(pathId)}
@@ -614,7 +613,7 @@ export function MasteryStudy({
           className="hidden shrink-0 sm:flex"
         />
 
-        <div className="dt-toolbar-actions">
+        <div className="flex shrink-0 items-center gap-1.5 pl-2">
           <Tooltip label={t("Save to Notebook")}>
             <button
               type="button"
@@ -645,7 +644,7 @@ export function MasteryStudy({
             {completed}/{total}
           </span>
         </div>
-      </PageToolbar>
+      </header>
 
       <div className="flex min-h-0 flex-1">
         <aside

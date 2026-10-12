@@ -23,11 +23,12 @@ test("partner web chat waits for runtime readiness, not channel running state", 
   assert.doesNotMatch(chatSource, /disabled=\{!connected \|\| !running\}/);
 });
 
-test("partner views stay separate from page actions", () => {
-  const toolbarEnd = pageSource.indexOf("</PageToolbar>");
-  const localViews = pageSource.indexOf('<nav className="dt-page-view-tabs">');
-  assert.ok(toolbarEnd >= 0 && localViews > toolbarEnd);
-  assert.match(pageSource, /className="dt-toolbar-actions"/);
+test("partner tabs use a stable centered header column", () => {
+  assert.match(
+    pageSource,
+    /grid-cols-\[minmax\(0,1fr\)_auto_minmax\(0,1fr\)\]/,
+  );
+  assert.match(pageSource, /<nav className="flex justify-self-center/);
 });
 
 test("partner chat keeps old active and archived conversations reachable", () => {

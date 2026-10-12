@@ -37,16 +37,16 @@ export function LearningShell({
       scrollRef={scrollRef}
       onScroll={onScroll}
       className={className}
-      breadcrumb={back && (
+    >
+      {back && (
         <Link
           href={LEARNING_HUB}
-          className="inline-flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+          className="mb-5 inline-flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
         >
           <ArrowLeft size={14} />
-          {t('navigation.learning')}
+          {t('Personalized Learning')}
         </Link>
       )}
-    >
       <PageHeader title={title} description={subtitle} action={action} meta={scopeChip} />
       {tabs}
       <div className={tabs ? 'mt-6' : ''}>{children}</div>

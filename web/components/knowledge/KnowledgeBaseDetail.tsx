@@ -1,6 +1,5 @@
 "use client";
 
-import { PageToolbar } from '@/components/layout/PageToolbar'
 import Tooltip from "@/shared/ui/Tooltip";
 import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import type { EmbeddingModelSelection } from "@/features/knowledge/model/types";
@@ -207,49 +206,63 @@ export default function KnowledgeBaseDetail({
   return (
     <main className="flex h-full flex-1 flex-col overflow-hidden bg-[var(--background)]">
       {/* Header */}
-      <PageToolbar>
-        <div className="dt-toolbar-identity">
+      <div className="border-b border-[var(--border)] bg-[var(--card)] px-6 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
             <KnowledgeEngineIcon
               engine={knowledgeSourceIconId({
                 provider: kbProvider(kb),
                 type: kb.metadata?.type,
               })}
-            size={20}
-            className="shrink-0"
+              size={36}
+              className="mt-0.5"
             />
-          <div className="dt-toolbar-identity">
+            <div className="min-w-0 flex-1">
               {onBack && (
                 <button
                   type="button"
                   onClick={onBack}
-                className="shrink-0 inline-flex items-center gap-1 text-[11.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                  className="mb-1.5 inline-flex items-center gap-1 text-[11.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" />
-                {t('Knowledge bases')}
+                  {t("Knowledge bases")}
                 </button>
               )}
-            <div className="flex min-w-0 items-center gap-2">
-              <h1 className="dt-toolbar-title">{kb.name}</h1>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="truncate font-serif text-[18px] font-semibold tracking-tight text-[var(--foreground)]">
+                  {kb.name}
+                </h1>
                 {kb.is_default && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
                     <Star className="h-3 w-3" fill="currentColor" />
-                  {t('Default')}
+                    {t("Default")}
                   </span>
                 )}
                 {(kb.assigned || kb.provenance_label) && (
                   <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
-                  {kb.provenance_label || t('Assigned by admin')}
+                    {kb.provenance_label || t("Assigned by admin")}
                   </span>
                 )}
-              <KbStatusBadge kb={kb} isReindexingLocally={isReindexingLocally} />
+                <KbStatusBadge
+                  kb={kb}
+                  isReindexingLocally={isReindexingLocally}
+                />
               </div>
+              <p className="mt-1 text-[12px] text-[var(--muted-foreground)]">
+                {provider}
+                {!pageIndexProvider ? ` · ${embeddingLabel}` : ""} ·{" "}
+                {t("Updated")} {updatedLabel}
+                {lastIndexedLabel
+                  ? ` · ${t("Last indexed")} ${lastIndexedLabel}`
+                  : ""}
+              </p>
+              <LightRagEmbeddingWarning kb={kb} />
             </div>
           </div>
           {canRetry && (
-          <Tooltip
-            label={t('Retry indexing from the documents already stored in this knowledge base.')}
-            side="top"
-          >
+            <Tooltip label={t(
+                "Retry indexing from the documents already stored in this knowledge base.",
+              )} side="top">
               <button
                 type="button"
                 onClick={handleRetry}
@@ -262,20 +275,17 @@ export default function KnowledgeBaseDetail({
                   <RefreshCw className="h-3 w-3" />
                 )}
                 {retrySubmitting || isReindexingLocally
-                ? t('Retrying…')
-                : t(kbProvider(kb) === 'lightrag' ? 'Review rebuild' : 'Retry indexing')}
+                  ? t("Retrying…")
+                  : t(
+                      kbProvider(kb) === "lightrag"
+                        ? "Review rebuild"
+                        : "Retry indexing",
+                    )}
               </button>
             </Tooltip>
           )}
-      </PageToolbar>
+        </div>
 
-      <div className="border-b border-[var(--border)] px-5 py-3">
-        <p className="mt-1 text-[12px] text-[var(--muted-foreground)]">
-          {provider}
-          {!pageIndexProvider ? ` · ${embeddingLabel}` : ''} · {t('Updated')} {updatedLabel}
-          {lastIndexedLabel ? ` · ${t('Last indexed')} ${lastIndexedLabel}` : ''}
-        </p>
-        <LightRagEmbeddingWarning kb={kb} />
         {/* Section nav */}
         <nav className="-mb-3 mt-3 flex gap-1 overflow-x-auto">
           {sections.map((key) => {

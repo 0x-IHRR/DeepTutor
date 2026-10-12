@@ -1,6 +1,6 @@
 'use client'
 
-import { FeaturePage, PageHeader } from '@/components/layout/FeaturePage'
+import { PageContainer, PageHeader } from '@/components/layout/FeaturePage'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronUp, Database, Loader2, Pencil, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -161,7 +161,8 @@ export default function BookCreator({
     : []
 
   return (
-    <FeaturePage breadcrumb={back}>
+    <PageContainer>
+      {back && <div className="mb-5">{back}</div>}
       <PageHeader title={t('Create a new book')} description={t('Describe what you want to learn, then pick the knowledge sources to fuse into a structured, interactive book.')} />
       <div className="space-y-5">
 
@@ -334,7 +335,7 @@ export default function BookCreator({
         </div>
       )}
       </div>
-    </FeaturePage>
+    </PageContainer>
   )
 }
 
