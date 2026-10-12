@@ -148,6 +148,8 @@ def test_preview_is_pure_and_commit_is_exact_and_retry_safe(system):
     before = store.load("path")
     interaction = store.get_active_interaction("path").model_dump(mode="json")
     result, proposed = preview(system)
+    assert result["module_order_changed"] is False
+    assert result["before_module_order"] == result["proposed_module_order"]
     assert store.load("path").model_dump() == before.model_dump()
     assert store.get_active_interaction("path").model_dump(mode="json") == interaction
     assert apply_diff(state(before), result["changes"]) == state(proposed)
@@ -332,6 +334,162 @@ def test_exact_diff_preserves_types_null_removals_and_pointer_escaping():
             "after": 1,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_reorder_only_preview_commit_preserves_every_objective_and_pending_question(
+    system, monkeypatch
+):
+    from deeptutor.capabilities.mastery import tools
+
+    store, service = system
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    before = store.load("path")
+    interaction = store.get_active_interaction("path").model_dump(mode="json")
+    args = {
+        "_mastery_path_id": "path",
+        "_session_id": "session",
+        "_mastery_session_mode": "outline",
+    }
+    tool = MasteryReviseTool()
+    preview_result = await tool.execute(
+        **args, action="preview", module_order=["m2", "m0", "m1"]
+    )
+    assert preview_result.success, preview_result.content
+    draft = json.loads(preview_result.content)
+    assert draft["status"] == "preview_only_not_saved"
+    assert draft["before_module_order"] == ["m0", "m1", "m2"]
+    assert draft["proposed_module_order"] == ["m2", "m0", "m1"]
+    assert draft["module_order_changed"] is True
+    assert store.load("path").model_dump() == before.model_dump()
+    result = await tool.execute(**args, action="commit", preview_id=draft["preview_id"])
+    assert result.success, result.content
+    receipt = json.loads(result.content)
+    assert receipt["applied_module_order"] == ["m2", "m0", "m1"]
+    committed = store.load("path")
+    assert [m.id for m in committed.modules] == ["m2", "m0", "m1"]
+    assert [m.order for m in committed.modules] == [0, 1, 2]
+    assert committed.current_module_id == before.current_module_id
+    assert committed.current_kp_index == before.current_kp_index
+    assert committed.pending_question == before.pending_question
+    assert store.get_active_interaction("path").model_dump(mode="json") == interaction
+    for field in ("mastery_levels", "qualitative_mastery", "feynman_explanations", "knowledge_types"):
+        assert getattr(committed, field) == getattr(before, field)
+    original = {m.id: m for m in before.modules}
+    for module in committed.modules:
+        assert module.model_dump(exclude={"order"}) == original[module.id].model_dump(
+            exclude={"order"}
+        )
+    assert apply_diff(state(before), draft["changes"]) == state(committed)
+    replay = await tool.execute(**args, action="commit", preview_id=draft["preview_id"])
+    assert json.loads(replay.content)["replayed"] is True
+    assert store.load("path").model_dump() == committed.model_dump()
+
+
+@pytest.mark.parametrize(
+    "order",
+    [
+        [],
+        ["m0", "m1"],
+        ["m0", "m1", "m1"],
+        ["m0", "m1", "foreign"],
+        ["m0", "m1", 2],
+        "m2,m0,m1",
+    ],
+)
+@pytest.mark.asyncio
+async def test_invalid_order_refuses_whole_preview_even_with_valid_content_edit(
+    system, monkeypatch, order
+):
+    from deeptutor.capabilities.mastery import tools
+
+    store, service = system
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    before = store.load("path").model_dump()
+    result = await MasteryReviseTool().execute(
+        _mastery_path_id="path",
+        _session_id="session",
+        _mastery_session_mode="outline",
+        action="preview",
+        modules=revisions(),
+        module_order=order,
+    )
+    assert not result.success
+    assert store.load("path").model_dump() == before
+    with sqlite3.connect(store.db_path) as db:
+        count = db.execute(
+            "SELECT COUNT(*) FROM mastery_events WHERE event_type='path.modules_previewed'"
+        ).fetchone()[0]
+        assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_order_requires_review_and_combined_edit_has_exact_diff(system, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    store, service = system
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    tool = MasteryReviseTool()
+    args = {
+        "_mastery_path_id": "path",
+        "_session_id": "session",
+        "_mastery_session_mode": "outline",
+    }
+    before = store.load("path")
+    refused = await tool.execute(**args, module_order=["m2", "m0", "m1"], modules=revisions())
+    assert not refused.success
+    result = await tool.execute(
+        **args, action="preview", module_order=["m2", "m0", "m1"], modules=revisions()
+    )
+    assert result.success, result.content
+    draft = json.loads(result.content)
+    assert store.load("path").model_dump() == before.model_dump()
+    committed = await tool.execute(**args, action="commit", preview_id=draft["preview_id"])
+    assert committed.success, committed.content
+    after = store.load("path")
+    assert apply_diff(state(before), draft["changes"]) == state(after)
+    assert after.modules[1].knowledge_points[0].name == "Revised objective 0"
+    assert after.mastery_levels["p2"] == 1
+
+
+@pytest.mark.asyncio
+async def test_reorder_noop_stale_preview_and_historical_commit_receipt(system, monkeypatch):
+    import jsonschema
+
+    from deeptutor.capabilities.mastery import tools
+
+    store, service = system
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    tool = MasteryReviseTool()
+    args = {
+        "_mastery_path_id": "path",
+        "_session_id": "session",
+        "_mastery_session_mode": "outline",
+    }
+    schema = tool.get_definition().to_openai_schema()["function"]["parameters"]
+    request = {"action": "preview", "module_order": ["m2", "m0", "m1"]}
+    jsonschema.validate(request, schema)
+    before = store.load("path")
+    noop = await tool.execute(**args, action="preview", module_order=["m0", "m1", "m2"])
+    assert not noop.success and "changes nothing" in noop.content
+    assert store.load("path").model_dump() == before.model_dump()
+    draft = json.loads((await tool.execute(**args, **request)).content)
+    service.replace_modules_for_path("path", before.modules)
+    stale = await tool.execute(**args, action="commit", preview_id=draft["preview_id"])
+    assert not stale.success
+    assert [m.id for m in store.load("path").modules] == ["m0", "m1", "m2"]
+    draft = json.loads((await tool.execute(**args, **request)).content)
+    committed = await tool.execute(**args, action="commit", preview_id=draft["preview_id"])
+    assert committed.success
+    later_modules = _plan_module_revision(
+        store.load("path"), {}, module_order=["m1", "m2", "m0"]
+    )[0]
+    service.replace_modules_for_path("path", later_modules)
+    replay_result = await tool.execute(**args, action="commit", preview_id=draft["preview_id"])
+    replay = json.loads(replay_result.content)
+    assert replay["replayed"] is True
+    assert replay["applied_module_order"] == ["m2", "m0", "m1"]
+    assert replay["current_module_order"] == ["m1", "m2", "m0"]
 
 
 @pytest.mark.asyncio
