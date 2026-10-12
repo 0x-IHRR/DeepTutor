@@ -6,7 +6,30 @@ import hashlib
 import json
 from typing import Any
 
-from deeptutor.learning.models import LearningProgress
+from deeptutor.learning.models import LearningModule, LearningProgress
+
+
+def reorder_modules(
+    modules: list[LearningModule], module_order: list[str]
+) -> list[LearningModule]:
+    """Reorder an existing module set without changing objective identity or content."""
+    known = {module.id: module for module in modules}
+    if (
+        not isinstance(module_order, list)
+        or not all(isinstance(module_id, str) and module_id for module_id in module_order)
+        or len(module_order) != len(known)
+        or len(set(module_order)) != len(module_order)
+        or set(module_order) != set(known)
+        or len(known) != len(modules)
+    ):
+        raise ValueError(
+            "module_order must contain every existing module ID exactly once, "
+            "with no omitted, duplicate, or foreign IDs."
+        )
+    return [
+        known[module_id].model_copy(deep=True, update={"order": index})
+        for index, module_id in enumerate(module_order)
+    ]
 
 
 def state_digest(progress: LearningProgress) -> str:

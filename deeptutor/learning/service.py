@@ -1292,6 +1292,8 @@ class LearningService:
                 "modules": [module.model_dump(mode="json") for module in proposed.modules],
                 "changes": changes,
                 "effects": effects,
+                "before_module_order": [module.id for module in original.modules],
+                "proposed_module_order": [module.id for module in proposed.modules],
             }
             preview_id = tx.record_module_preview(payload, session_id=session_id)
         return {
@@ -1299,6 +1301,11 @@ class LearningService:
             "base_revision": expected_revision,
             "changes": changes,
             "effects": effects,
+            "before_module_order": payload["before_module_order"],
+            "proposed_module_order": payload["proposed_module_order"],
+            "module_order_changed": (
+                payload["before_module_order"] != payload["proposed_module_order"]
+            ),
         }, proposed
 
     def commit_module_revision(
@@ -1353,6 +1360,7 @@ class LearningService:
                 "applied_revision": draft["committed_revision"]
                 if replayed
                 else tx.base_revision + 1,
+                "applied_module_order": [module["id"] for module in draft["modules"]],
             }
         return tx.progress, receipt
 

@@ -2223,7 +2223,13 @@ class MasteryReviseTool(BaseTool):
                 "edits, action=preview returns the exact proposed state changes "
                 "without saving. Review them, then use action=commit with only "
                 "that preview_id in a later model round. Omit action for the "
-                "existing immediate revision behavior."
+                "existing immediate content revision behavior. To change the "
+                "displayed module sequence, use action=preview with module_order "
+                "containing every existing module ID exactly once; content edits "
+                "are optional. Reordering preserves objective IDs and evidence; "
+                "it does not abandon an unanswered question or change the active "
+                "objective. Never report an order change from a content-only edit "
+                "or from an uncommitted preview."
             ),
             parameters=[
                 ToolParameter(
@@ -2237,6 +2243,17 @@ class MasteryReviseTool(BaseTool):
                     name="preview_id",
                     type="integer",
                     description="Commit only: the identifier returned by the reviewed preview.",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="module_order",
+                    type="array",
+                    items={"type": "string"},
+                    description=(
+                        "Preview only: complete requested sequence of existing module IDs. "
+                        "Omit to keep order unchanged; may be used without content edits. "
+                        "Does not rename modules, waive prerequisites, or move the current objective."
+                    ),
                     required=False,
                 ),
                 ToolParameter(
@@ -2323,7 +2340,7 @@ class MasteryReviseTool(BaseTool):
         if action == "commit":
             if any(
                 kwargs.get(key) is not None
-                for key in ("module_id", "modules", "rewrite", "add", "remove")
+                for key in ("module_id", "modules", "rewrite", "add", "remove", "module_order")
             ):
                 return ToolResult(
                     content="Commit takes only preview_id; omit all revision edits.", success=False
@@ -2343,6 +2360,7 @@ class MasteryReviseTool(BaseTool):
                     "status": "committed",
                     **receipt,
                     "path_revision": progress.version,
+                    "current_module_order": [module.id for module in progress.modules],
                     "map": map_summary(progress),
                 },
                 meta_key="mastery_revise",
@@ -2350,9 +2368,20 @@ class MasteryReviseTool(BaseTool):
         if kwargs.get("preview_id") is not None:
             return ToolResult(content="Use preview_id only with action commit.", success=False)
 
-        specs, spec_error = _revise_specs(kwargs)
-        if spec_error is not None:
-            return ToolResult(content=spec_error, success=False)
+        module_order = kwargs.get("module_order")
+        if module_order is not None and action != "preview":
+            return ToolResult(
+                content="Module reordering requires action preview followed by a reviewed commit.",
+                success=False,
+            )
+        specs = {}
+        if module_order is None or any(
+            kwargs.get(key) is not None
+            for key in ("module_id", "modules", "rewrite", "add", "remove")
+        ):
+            specs, spec_error = _revise_specs(kwargs)
+            if spec_error is not None:
+                return ToolResult(content=spec_error, success=False)
 
         progress = _load_path(service, path_id)
         if progress is None or not progress.modules:
@@ -2360,7 +2389,7 @@ class MasteryReviseTool(BaseTool):
 
         try:
             applied, targets, revised_by_module, resets_by_module = _plan_module_revision(
-                progress, specs
+                progress, specs, module_order=module_order
             )
         except (ValueError, TypeError) as exc:
             return ToolResult(content=str(exc), success=False)
@@ -2720,7 +2749,12 @@ def _revised_point_id(module_id: str, taken: set[str]) -> str:
         index += 1
 
 
-def _plan_module_revision(progress: LearningProgress, specs: dict[str, dict[str, Any]]):
+def _plan_module_revision(
+    progress: LearningProgress,
+    specs: dict[str, dict[str, Any]],
+    *,
+    module_order: list[str] | None = None,
+):
     """Shared planner for direct and reviewed revisions; never mutates stored state."""
     known_modules = {m.id: m for m in progress.modules}
     targets: list[LearningModule] = []
@@ -2774,6 +2808,10 @@ def _plan_module_revision(progress: LearningProgress, specs: dict[str, dict[str,
     for module in applied:
         for point in module.knowledge_points:
             point.prerequisite_ids = [rewrite_ids.get(ref, ref) for ref in point.prerequisite_ids]
+    if module_order is not None:
+        from deeptutor.learning.outline_revision import reorder_modules
+
+        applied = reorder_modules(applied, module_order)
     return applied, targets, revised_by_module, resets_by_module
 
 
