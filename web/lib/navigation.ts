@@ -29,3 +29,21 @@ export function partnerSessionHref(session: {
   const root = session.kind === 'group' ? '/partners/groups' : '/partners'
   return `${root}/${encodeURIComponent(session.owner_id)}?${new URLSearchParams({ session: session.session_key })}`
 }
+
+/** Query identities matter: practice items share a page but not a record. */
+export function isNavigationTargetActive(
+  href: string,
+  pathname: string,
+  search: URLSearchParams
+): boolean {
+  const target = new URL(href, 'http://localhost')
+  const workspace = target.searchParams.get('dt_workspace') ?? target.searchParams.get('workspace')
+  const currentWorkspace = search.get('dt_workspace') ?? search.get('workspace') ?? ''
+  return (
+    (pathname === target.pathname || pathname.startsWith(`${target.pathname}/`)) &&
+    (workspace === null || workspace === currentWorkspace) &&
+    [...target.searchParams].every(
+      ([key, value]) => key === 'dt_workspace' || key === 'workspace' || search.get(key) === value
+    )
+  )
+}

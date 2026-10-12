@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { allLearningActivity, type LearningSources } from '@/lib/learning-dashboard'
-import { categoryForPath, partnerSessionHref } from '@/lib/navigation'
+import { categoryForPath, partnerSessionHref, isNavigationTargetActive } from '@/lib/navigation'
 
 it('keeps old feature URLs in their new categories', () => {
   for (const path of ['/chat/old-session', '/co-writer/old-document', '/kanban', '/agents'])
@@ -56,4 +56,19 @@ it('encodes partner identities and session keys independently without rewriting 
   )
   expect(decodeURIComponent(url.pathname)).toBe('/partners/研究伙伴')
   expect(url.searchParams.get('session')).toBe('web:old/+?')
+})
+
+it('highlights only the open question in its original workspace', () => {
+  const path = '/learning/practice'
+  const query = new URLSearchParams('question=7&dt_workspace=research')
+  expect(
+    isNavigationTargetActive('/learning/practice?question=7&dt_workspace=research', path, query)
+  ).toBe(true)
+  expect(
+    isNavigationTargetActive('/learning/practice?question=8&dt_workspace=research', path, query)
+  ).toBe(false)
+  expect(isNavigationTargetActive('/learning/practice?question=7&dt_workspace=', path, query)).toBe(
+    false
+  )
+  expect(isNavigationTargetActive('/learning', path, query)).toBe(true)
 })

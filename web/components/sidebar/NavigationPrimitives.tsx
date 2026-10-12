@@ -1,4 +1,5 @@
 'use client'
+import { isNavigationTargetActive } from '@/lib/navigation'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
@@ -25,13 +26,8 @@ export function NavigationRow({
   const drawer = useSidebarDrawer()
   const pathname = usePathname()
   const search = useSearchParams()
-  const target = new URL(href, 'http://localhost')
-  const workspace = target.searchParams.get('dt_workspace') ?? target.searchParams.get('workspace')
-  const currentWorkspace = search.get('dt_workspace') ?? search.get('workspace') ?? ''
   const selected =
-    active ??
-    ((pathname === target.pathname || pathname.startsWith(`${target.pathname}/`)) &&
-      (workspace === null || workspace === currentWorkspace))
+    active ?? isNavigationTargetActive(href, pathname, new URLSearchParams(search.toString()))
   return (
     <Tooltip label={label} description={detail} as="div" side="right">
       <Link
