@@ -504,7 +504,12 @@ def _load_path(service: LearningService, path_id: str) -> LearningProgress | Non
     return service.store.load(path_id)
 
 
-def _profile_status(progress: LearningProgress | None) -> dict[str, Any]:
+def _profile_status(
+    progress: LearningProgress | None,
+    knowledge_point_id: str | None = None,
+    *,
+    include_teaching_history: bool = False,
+) -> dict[str, Any]:
     """The learner profile, and whether intake still has to happen.
 
     Returned by ``mastery_status`` on every round rather than injected once at
@@ -513,7 +518,7 @@ def _profile_status(progress: LearningProgress | None) -> dict[str, Any]:
     intake exists to prevent.
     """
     profile = getattr(progress, "learner_profile", None) if progress is not None else None
-    if profile is None or profile.is_empty():
+    if profile is None or (profile.is_empty() and not profile.teaching_observations):
         return {
             "learner_profile": None,
             "intake_needed": True,
@@ -526,6 +531,13 @@ def _profile_status(progress: LearningProgress | None) -> dict[str, Any]:
                 "materials yourself."
             ),
         }
+    from deeptutor.learning.teaching import teaching_guidance
+
+    objective_id = (
+        next_objective(progress).knowledge_point_id
+        if knowledge_point_id is None
+        else knowledge_point_id
+    )
     return {
         "learner_profile": {
             "prior_knowledge": profile.prior_knowledge,
@@ -534,8 +546,9 @@ def _profile_status(progress: LearningProgress | None) -> dict[str, Any]:
             "preferences": profile.preferences,
             "teaching_strategy": profile.teaching_strategy,
             "notes": profile.notes,
+            **teaching_guidance(profile, objective_id, include_history=include_teaching_history),
         },
-        "intake_needed": False,
+        "intake_needed": profile.is_empty(),
     }
 
 
@@ -716,13 +729,23 @@ class MasteryStatusTool(BaseTool):
                 "the path, mode, outline, or progress when updated state is needed. "
                 "Never guess the next objective or reuse an earlier turn's snapshot."
             ),
-            parameters=[],
+            parameters=[
+                ToolParameter(
+                    name="include_teaching_history",
+                    type="boolean",
+                    required=False,
+                    description="Read all bounded path teaching notes only for explicit inspection/correction or obsolete-note cleanup. Default returns current objective notes only.",
+                )
+            ],
         )
 
     async def execute(self, **kwargs: Any) -> ToolResult:
         path_id = _resolve_path_id(kwargs)
         if not path_id:
             return _no_path_result()
+        include_history = kwargs.get("include_teaching_history", False)
+        if type(include_history) is not bool:
+            return ToolResult(content="include_teaching_history must be a boolean.", success=False)
         service = _new_service()
         progress = _load_path(service, path_id)
         # Which goal this is, in the learner's own words. The tutor had no way
@@ -757,7 +780,7 @@ class MasteryStatusTool(BaseTool):
                     "path_revision": progress.version if progress is not None else 0,
                     **identity,
                     "message": await _unbuilt_status_message(service, path_id, topic),
-                    **_profile_status(progress),
+                    **_profile_status(progress, include_teaching_history=include_history),
                 },
                 meta_key="mastery_status",
             )
@@ -773,7 +796,7 @@ class MasteryStatusTool(BaseTool):
             "mode": normalize_mode(kwargs.get("_mastery_session_mode")),
             "next": next_objective(progress).to_dict(),
             "map": map_summary(progress),
-            **_profile_status(progress),
+            **_profile_status(progress, include_teaching_history=include_history),
             "learning_stages": {
                 kp.id: learning_stage(progress, kp.id)
                 for module in progress.modules
@@ -2023,6 +2046,8 @@ class MasteryProfileTool(BaseTool):
     """
 
     def get_definition(self) -> ToolDefinition:
+        from deeptutor.learning.teaching import TeachingUpdate
+
         return ToolDefinition(
             name="mastery_profile",
             description=(
@@ -2032,7 +2057,11 @@ class MasteryProfileTool(BaseTool):
                 "taught. Call it during intake — before designing the outline "
                 "— and again whenever they correct one of these. Pass only the "
                 "fields they actually spoke to; omitted fields keep what they "
-                "said before. Never invent an answer they did not give."
+                "said before. Never invent an answer they did not give. "
+                "For evolving teaching feedback use keyed teaching_updates: explicit "
+                "preferences or objective-local difficulties/attempts. Keep attempts "
+                "unknown until learner evidence shows helped/not_helped. Reuse a key "
+                "to correct it, remove obsolete entries, preserve unrelated keys."
             ),
             parameters=[
                 ToolParameter(
@@ -2086,6 +2115,27 @@ class MasteryProfileTool(BaseTool):
                     description=("Anything else worth carrying that the fields above do not hold."),
                     required=False,
                 ),
+                ToolParameter(
+                    name="teaching_updates",
+                    type="array",
+                    required=False,
+                    description=(
+                        "1-6 keyed upsert/remove operations. Preference requires an explicit "
+                        "learner_report with evidence. Observation requires a current path "
+                        "knowledge_point_id; label inferred difficulties tentative. Strategy "
+                        "results require learner_report evidence and strategy. Evidence is a "
+                        "literal quote from the current learner message, never silence "
+                        "or your own explanation. Upsert supplies the whole entry; remove "
+                        "supplies only kind/op/key. Limits: 6 preferences, 12 observations."
+                    ),
+                    items=TeachingUpdate.model_json_schema(),
+                ),
+                ToolParameter(
+                    name="expected_revision",
+                    type="integer",
+                    required=False,
+                    description="Required with teaching_updates: path_revision from the current mastery snapshot. Refresh after conflict.",
+                ),
             ],
         )
 
@@ -2106,11 +2156,12 @@ class MasteryProfileTool(BaseTool):
             )
             if key in kwargs and kwargs[key] is not None
         }
-        if not fields:
+        updates = kwargs.get("teaching_updates")
+        if not fields and updates is None:
             return ToolResult(
                 content=(
                     "mastery_profile needs at least one of prior_knowledge, "
-                    "target_level, time_budget, preferences, teaching_strategy or notes — pass what "
+                    "target_level, time_budget, preferences, teaching_strategy, notes or teaching_updates — pass what "
                     "the learner actually told you."
                 ),
                 success=False,
@@ -2125,12 +2176,25 @@ class MasteryProfileTool(BaseTool):
             )
 
         service = _new_service()
-        progress, changed = service.record_learner_profile(
-            path_id,
-            fields=fields,
-            session_id=_resolve_session_id(kwargs),
-            turn_id=_resolve_turn_id(kwargs),
-        )
+        from deeptutor.learning.storage import LearningStoreError
+
+        try:
+            progress, changed = service.record_learner_profile(
+                path_id,
+                fields=fields,
+                session_id=_resolve_session_id(kwargs),
+                turn_id=_resolve_turn_id(kwargs),
+                teaching_updates=updates,
+                expected_revision=kwargs.get("expected_revision"),
+                learner_message=str(kwargs.get("_learner_message") or ""),
+            )
+        except (ValueError, LearningStoreError) as exc:
+            return ToolResult(content=str(exc), success=False)
+        except KeyError:
+            return ToolResult(
+                content="The bound mastery path no longer exists. Refresh the current path.",
+                success=False,
+            )
         return _json_result(
             {
                 "status": "recorded",
