@@ -1,37 +1,49 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { readClientCache, withClientCache } from '@/lib/client-cache'
 import { usePathname } from 'next/navigation'
 import { apiFetch, apiUrl } from '@/lib/api'
 import { scopedUrl } from '@/lib/workspace-scope'
 import { subscribeSessionChanges } from '@/lib/session-events'
 import type { LearningKind, LearningSources } from '@/lib/learning-dashboard'
 
+const CACHE_KEY = 'navigation:learning-index'
+type LearningIndex = { sources: LearningSources; failed: LearningKind[] }
 const EMPTY: LearningSources = { books: [], mastery: [], reading: [], watching: [], practice: [] }
 export function useLearningIndex(enabled = true) {
   const pathname = usePathname()
-  const [sources, setSources] = useState<LearningSources>(EMPTY)
-  const [failed, setFailed] = useState<LearningKind[]>([])
-  const [loading, setLoading] = useState(true)
+  const [sources, setSources] = useState<LearningSources>(
+    () => readClientCache<LearningIndex>(CACHE_KEY)?.sources ?? EMPTY
+  )
+  const [failed, setFailed] = useState<LearningKind[]>(
+    () => readClientCache<LearningIndex>(CACHE_KEY)?.failed ?? []
+  )
+  const [loading, setLoading] = useState(() => !readClientCache<LearningIndex>(CACHE_KEY))
   const [revision, setRevision] = useState(0)
   const retry = useCallback(() => setRevision(value => value + 1), [])
   useEffect(() => {
     if (!enabled) return
     let alive = true
     let busy = false
-    const controller = new AbortController()
     const refresh = async () => {
       if (busy || document.visibilityState === 'hidden') return
       busy = true
       try {
-        const response = await apiFetch(apiUrl(scopedUrl('/api/dashboard/learning-index', '')), {
-          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]),
-        })
-        if (!response.ok) throw new Error('Learning index unavailable')
-        const payload = (await response.json()) as {
-          sources: LearningSources
-          failed: LearningKind[]
-        }
+        const payload = await withClientCache(
+          CACHE_KEY,
+          async () => {
+            const response = await apiFetch(
+              apiUrl(scopedUrl('/api/dashboard/learning-index', '')),
+              {
+                signal: AbortSignal.timeout(20000),
+              }
+            )
+            if (!response.ok) throw new Error('Learning index unavailable')
+            return (await response.json()) as LearningIndex
+          },
+          { force: true }
+        )
         if (alive) {
           // Keep readable collections during a transient partial outage.
           setSources(
@@ -63,7 +75,6 @@ export function useLearningIndex(enabled = true) {
     const timer = window.setInterval(refresh, 30000)
     return () => {
       alive = false
-      controller.abort()
       unsubscribe()
       window.clearInterval(timer)
       window.removeEventListener('focus', refresh)

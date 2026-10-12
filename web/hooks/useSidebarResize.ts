@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -33,7 +34,7 @@ export function useSidebarResize(
   } | null>(null);
   const width = clampWidth(preferredWidth, max);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const stored = Number(browserStorage.readRaw("local", storageKey));
     if (Number.isFinite(stored) && stored > 0) {
       // Hydrate after mount to keep the initial render consistent with SSR.

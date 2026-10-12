@@ -155,7 +155,10 @@ import {
 } from "@/lib/selection-tutor";
 import { shouldReturnToChatAfterResearch } from "@/lib/deep-research-report";
 
-const HomeShortcuts = dynamic(() => import("@/components/chat/home/HomeShortcuts").then(module => module.HomeShortcuts));
+const HomeShortcuts = dynamic(
+  () => import("@/components/chat/home/HomeShortcuts").then(module => module.HomeShortcuts),
+  { loading: () => <div className="h-8" aria-busy="true" /> },
+);
 
 const NotebookRecordPicker = dynamic(
   () => import("@/components/notebook/NotebookRecordPicker"),
@@ -2500,7 +2503,7 @@ export default function ChatWorkspace() {
                   </div>
                 </div>
               ) : !hasMessages ? (
-                <div className="flex w-full flex-1 min-h-0 items-end justify-center pb-14 animate-fade-in px-6">
+                <div className="flex w-full flex-1 min-h-0 items-end justify-center pb-14 px-6">
                   <div className="w-full max-w-[960px] flex flex-col items-center justify-center gap-4">
                     <img
                       src="/logo_black.png"

@@ -10,6 +10,7 @@ import {
   useEffect,
   useRef,
   useState,
+  Suspense,
   type ReactNode,
   type CSSProperties,
 } from "react";
@@ -365,12 +366,14 @@ export function SidebarShell({
 
       {homeSlot ? homeSlot(false) : <CategoryTabs nav={categoryNav} collapsed={false} />}
 
-      {/* Modules and conversations share one scroll region below Home. */}
+      {/* Partner previews stay visible while their conversation list scrolls. */}
       <div
         ref={recentsScrollRef}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2"
+        className={`min-h-0 flex-1 ${!bodySlot && ["partners", "learning"].includes(categoryNav.category) ? "overflow-hidden" : "overflow-y-auto overscroll-contain pb-2"}`}
       >
-        {bodySlot ? bodySlot(false) : <CategoryBody nav={categoryNav} collapsed={false} sessions={sessionContent} />}
+        <Suspense fallback={<div aria-busy="true" className="mx-4 mt-5 h-3 w-28 rounded bg-muted" />}>
+          {bodySlot ? bodySlot(false) : <CategoryBody nav={categoryNav} collapsed={false} sessions={sessionContent} />}
+        </Suspense>
       </div>
 
       {/* Secondary nav + footer */}

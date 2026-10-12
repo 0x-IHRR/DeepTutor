@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useState, startTransition, type ReactNode } from 'react'
 import dynamic from 'next/dynamic'
 import { usePathname, useRouter } from 'next/navigation'
 import { m, useReducedMotion } from 'framer-motion'
@@ -47,6 +47,7 @@ export function useCategoryNavigation() {
   const categories = CATEGORIES.filter(item =>
     navVisibleUnderPolicy(item.href, learningPolicy?.allowedSurfaces ?? null)
   )
+  const [visited, setVisited] = useState<NavigationCategory[]>([])
   const [selection, setSelection] = useState<{
     pathname: string
     category: NavigationCategory
@@ -58,13 +59,17 @@ export function useCategoryNavigation() {
   return {
     category,
     categories,
+    visited,
     query,
     setQuery,
     searchOpen,
     setSearchOpen,
     select: (next: NavigationCategory) => {
-      setSelection({ pathname, category: next })
-      setQuery('')
+      startTransition(() => {
+        setVisited(previous => [...new Set([...previous, category, next])])
+        setSelection({ pathname, category: next })
+        setQuery('')
+      })
     },
     allowedSurfaces: learningPolicy?.allowedSurfaces ?? null,
   }
@@ -183,8 +188,7 @@ export function CategoryBody({
       id="category-content"
       role="tabpanel"
       aria-labelledby={`category-${nav.category}`}
-      className="dt-category-content"
-      key={nav.category}
+      className={`dt-category-content ${['partners', 'learning'].includes(nav.category) ? 'dt-category-content-fixed' : ''}`}
     >
       {nav.category === 'home' && (
         <>
@@ -212,9 +216,28 @@ export function CategoryBody({
           {sessions}
         </>
       )}
-      {nav.category === 'learning' && <LearningNavigation query={nav.query} sessions={sessions} />}
-      {nav.category === 'partners' && <PartnerNavigation query={nav.query} />}
-      {nav.category === 'resources' && <ResourcesNavigation query={nav.query} />}
+      {(nav.category === 'learning' || nav.visited.includes('learning')) && (
+        <div hidden={nav.category !== 'learning'} className="dt-category-panel">
+          <LearningNavigation
+            active={nav.category === 'learning'}
+            query={nav.category === 'learning' ? nav.query : ''}
+            sessions={sessions}
+          />
+        </div>
+      )}
+      {(nav.category === 'partners' || nav.visited.includes('partners')) && (
+        <div hidden={nav.category !== 'partners'} className="dt-category-panel">
+          <PartnerNavigation
+            active={nav.category === 'partners'}
+            query={nav.category === 'partners' ? nav.query : ''}
+          />
+        </div>
+      )}
+      {(nav.category === 'resources' || nav.visited.includes('resources')) && (
+        <div hidden={nav.category !== 'resources'}>
+          <ResourcesNavigation query={nav.category === 'resources' ? nav.query : ''} />
+        </div>
+      )}
       {nav.searchOpen && matches(t('Settings'), nav.query) && (
         <Section title={t('Settings')}>
           <NavigationRow href="/settings" label={t('Settings')} icon={Settings} />

@@ -15,6 +15,7 @@ export function NavigationRow({
   detail,
   active,
   children,
+  trailing,
 }: {
   href: string
   label: string
@@ -22,6 +23,7 @@ export function NavigationRow({
   detail?: string
   active?: boolean
   children?: ReactNode
+  trailing?: ReactNode
 }) {
   const drawer = useSidebarDrawer()
   const pathname = usePathname()
@@ -41,9 +43,10 @@ export function NavigationRow({
       >
         {children ?? (Icon && <Icon size={18} strokeWidth={1.6} />)}
         <span className="min-w-0 flex-1 truncate">{label}</span>
-        {detail && (
-          <span className="max-w-[34%] truncate text-[11px] text-muted-foreground">{detail}</span>
-        )}
+        {trailing ??
+          (detail && (
+            <span className="max-w-[34%] truncate text-[11px] text-muted-foreground">{detail}</span>
+          ))}
       </Link>
     </Tooltip>
   )

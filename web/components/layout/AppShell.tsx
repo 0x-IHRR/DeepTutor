@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useState,
+  Suspense,
 } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -129,7 +130,11 @@ export default function AppShell({ sidebar, children, homeHref = "/" }: AppShell
             </Link>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <Suspense fallback={<div aria-busy="true" className="h-full bg-[var(--background)]" />}>
+              {children}
+            </Suspense>
+          </div>
         </main>
       </div>
     </SidebarDrawerContext.Provider>

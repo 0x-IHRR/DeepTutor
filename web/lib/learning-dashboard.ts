@@ -1,9 +1,14 @@
-import { scopedUrl } from "@/lib/workspace-scope";
+import { scopedUrl } from '@/lib/workspace-scope'
 import type { Book } from '@/lib/book-types'
 import type { MasteryTopic } from '@/lib/learning-api'
 import type { ReadingWorkspace } from '@/lib/reading-workspace-api'
 import type { SessionSummary } from '@/lib/session-api'
-import { bookRoute, masteryTopicRoute, readingCollectionRoute, practiceRoute } from '@/lib/learning-routes'
+import {
+  bookRoute,
+  masteryTopicRoute,
+  readingCollectionRoute,
+  practiceRoute,
+} from '@/lib/learning-routes'
 import { sessionRoute } from '@/lib/mastery-session'
 
 export type LearningKind = 'books' | 'mastery' | 'reading' | 'watching' | 'practice'
@@ -21,6 +26,7 @@ export interface LearningActivity {
   title: string
   href: string
   updatedAt: number
+  createdAt: number
   workspaceName?: string
   progress?: number
 }
@@ -34,47 +40,58 @@ export function isWatchingSession(session: SessionSummary): boolean {
 export function allLearningActivity(sources: LearningSources): LearningActivity[] {
   return [
     ...(sources.practice ?? []).map(entry => ({
-      key: `practice:${entry.content_workspace_id || ""}:${entry.id}`,
+      key: `practice:${entry.content_workspace_id || ''}:${entry.id}`,
       kind: 'practice' as const,
       title: entry.question,
-      href: scopedUrl(practiceRoute(new URLSearchParams({ question: String(entry.id) }), ""), entry.content_workspace_id || ""),
+      href: scopedUrl(
+        practiceRoute(new URLSearchParams({ question: String(entry.id) }), ''),
+        entry.content_workspace_id || ''
+      ),
       updatedAt: entry.updated_at || entry.created_at,
+      createdAt: entry.created_at || entry.updated_at,
       workspaceName: entry.content_workspace_name,
     })),
     ...sources.books.map(book => ({
-      key: `book:${book.content_workspace_id || ""}:${book.id}`,
+      key: `book:${book.content_workspace_id || ''}:${book.id}`,
       kind: 'books' as const,
       title: book.title,
-      href: scopedUrl(bookRoute(book.id, null, ""), book.content_workspace_id || ""),
+      href: scopedUrl(bookRoute(book.id, null, ''), book.content_workspace_id || ''),
       updatedAt: book.updated_at,
+      createdAt: book.created_at || book.updated_at,
       workspaceName: book.content_workspace_name,
       progress: (book.reading?.percent ?? 0) / 100,
     })),
     ...sources.mastery
       .filter(topic => topic.metadata.status === 'active')
       .map(topic => ({
-        key: `topic:${topic.content_workspace_id || ""}:${topic.path_id}`,
+        key: `topic:${topic.content_workspace_id || ''}:${topic.path_id}`,
         kind: 'mastery' as const,
         title: topic.name || topic.metadata.goal,
-        href: scopedUrl(masteryTopicRoute(topic.path_id, ""), topic.content_workspace_id || ""),
+        href: scopedUrl(masteryTopicRoute(topic.path_id, ''), topic.content_workspace_id || ''),
         updatedAt: topic.updated_at,
+        createdAt: topic.metadata.created_at || topic.updated_at,
         workspaceName: topic.content_workspace_name,
         progress: topic.map.counts.total ? topic.map.counts.mastered / topic.map.counts.total : 0,
       })),
     ...sources.reading.map(workspace => ({
-      key: `reading:${workspace.content_workspace_id || ""}:${workspace.workspace_id}`,
+      key: `reading:${workspace.content_workspace_id || ''}:${workspace.workspace_id}`,
       kind: 'reading' as const,
       title: workspace.title,
-      href: scopedUrl(readingCollectionRoute(workspace.workspace_id, ""), workspace.content_workspace_id || ""),
+      href: scopedUrl(
+        readingCollectionRoute(workspace.workspace_id, ''),
+        workspace.content_workspace_id || ''
+      ),
       updatedAt: workspace.updated_at,
+      createdAt: workspace.created_at || workspace.updated_at,
       workspaceName: workspace.content_workspace_name,
     })),
     ...sources.watching.filter(isWatchingSession).map(session => ({
-      key: `session:${session.content_workspace_id || ""}:${session.session_id}`,
+      key: `session:${session.content_workspace_id || ''}:${session.session_id}`,
       kind: 'watching' as const,
       title: session.title,
       href: sessionRoute(session),
       updatedAt: session.updated_at,
+      createdAt: session.created_at || session.updated_at,
     })),
   ].sort((a, b) => b.updatedAt - a.updatedAt || a.key.localeCompare(b.key))
 }

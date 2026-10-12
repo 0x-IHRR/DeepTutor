@@ -1,3 +1,4 @@
+import { invalidateClientCache } from "./client-cache";
 import { apiFetch, apiUrl, setRuntimeAuthEnabled } from "@/lib/api";
 
 // Auth state is resolved at runtime from the backend (`/api/auth/status`),
@@ -38,6 +39,7 @@ let cachedAuthStatus: { value: AuthStatus | null; expiresAt: number } | null =
   null;
 
 export function invalidateAuthStatusCache(): void {
+  invalidateClientCache("navigation:");
   authStatusRequest = null;
   cachedAuthStatus = null;
 }

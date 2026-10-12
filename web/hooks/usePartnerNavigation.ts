@@ -1,5 +1,6 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
+import { readClientCache, withClientCache } from '@/lib/client-cache'
 import { usePathname } from 'next/navigation'
 import { apiFetch, apiUrl } from '@/lib/api'
 import { subscribeSessionChanges } from '@/lib/session-events'
@@ -22,15 +23,19 @@ export interface PartnerNavigationData {
   sessions: PartnerNavigationSession[]
   unavailable: string[]
 }
+const CACHE_KEY = 'navigation:partners'
 export function usePartnerNavigation(enabled: boolean) {
   const pathname = usePathname()
-  const [data, setData] = useState<PartnerNavigationData>({
-    partners: [],
-    groups: [],
-    sessions: [],
-    unavailable: [],
-  })
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<PartnerNavigationData>(
+    () =>
+      readClientCache<PartnerNavigationData>(CACHE_KEY) ?? {
+        partners: [],
+        groups: [],
+        sessions: [],
+        unavailable: [],
+      }
+  )
+  const [loading, setLoading] = useState(() => !readClientCache<PartnerNavigationData>(CACHE_KEY))
   const [error, setError] = useState(false)
   const [revision, setRevision] = useState(0)
   const retry = useCallback(() => setRevision(value => value + 1), [])
@@ -38,16 +43,21 @@ export function usePartnerNavigation(enabled: boolean) {
     if (!enabled) return
     let alive = true
     let busy = false
-    const controller = new AbortController()
     const refresh = async () => {
       if (busy || document.visibilityState === 'hidden') return
       busy = true
       try {
-        const response = await apiFetch(apiUrl('/api/partners/navigation'), {
-          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]),
-        })
-        if (!response.ok) throw new Error('Partner navigation unavailable')
-        const next = (await response.json()) as PartnerNavigationData
+        const next = await withClientCache(
+          CACHE_KEY,
+          async () => {
+            const response = await apiFetch(apiUrl('/api/partners/navigation'), {
+              signal: AbortSignal.timeout(20000),
+            })
+            if (!response.ok) throw new Error('Partner navigation unavailable')
+            return (await response.json()) as PartnerNavigationData
+          },
+          { force: true }
+        )
         if (alive) {
           setData(next)
           setError(false)
@@ -66,7 +76,6 @@ export function usePartnerNavigation(enabled: boolean) {
     document.addEventListener('visibilitychange', refresh)
     return () => {
       alive = false
-      controller.abort()
       unsubscribe()
       window.clearInterval(timer)
       window.removeEventListener('focus', refresh)

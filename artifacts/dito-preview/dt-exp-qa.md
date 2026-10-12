@@ -53,3 +53,15 @@ Evidence: `dt-exp-practice.png`, `dt-exp-partners.png`, `dt-exp-writer.png` and 
 ## Known limits
 
 Model-backed generation, external channels and integrations require their normal configuration and were not live-tested in the isolated runtime. This iteration uses the existing chat/tool loop for Auto; it does not claim to add a new cross-capability autonomous planning engine. Mobile refinement was explicitly deferred by the user.
+
+
+## Sidebar refinement, 2026-10-12
+
+- Partner preview is capped at three avatars in one row; group preview is capped at two rows. Each section retains its total, full-list link and creation action. Conversations scroll independently beneath fixed headings, with title and owner on separate lines.
+- Verified against isolated API data with 8 partners, 6 groups and 36 conversations, including a 1280 × 600 desktop viewport. End/Home and Show more keep the sidebar at y=0; all 36 histories remain reachable. Searching Paul finds a partner outside the initial preview. Full-list anchors land on the respective partner/group sections.
+- Learning begins with one All learning row containing the original creation menu. Records show local-calendar groups and right-aligned relative timestamps. Last-active and creation-time ordering use the original data timestamps; search covers titles, workspace names and learning types. The sorting preference persists locally.
+- Verified creation-time ordering, search, Escape to clear, switching categories without losing ordering, and the original four learning creation options. Six isolated reading records exercise distinct creation/activity dates and all date groups.
+- Next dynamic components without a loading option can suspend to the outer workspace layout. Local Suspense boundaries now contain sidebar and feature loading; category switches use a transition and retain visited panels. Removed the repeated whole-category fade and chat greeting fade. Saved sidebar width restores before paint.
+- Recent navigation snapshots remain visible during background refresh and are cleared on authentication changes. A regression verifies that an in-flight response cannot restore the previous account cache after invalidation.
+- Validation: 152 Vitest files / 671 tests and 1,303 Node tests pass. Production build, type checking, i18n, dependency architecture and all existing route budgets pass. Targeted ESLint has no errors (existing logo-alt warnings remain).
+- Evidence: dt-exp-learning-navigation.png and dt-exp-partner-navigation.png. Test records remain isolated under /tmp/deeptutor-dt-exp-runtime; no production data schema or records were changed.
