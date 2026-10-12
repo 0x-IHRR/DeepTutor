@@ -280,8 +280,16 @@ export function visibleGroups(
 
 export { GROUPS as DASHBOARD_GROUPS };
 
-export default function SpaceDashboard() {
-  const { i18n } = useTranslation();
+export default function SpaceDashboard({
+  title,
+  description,
+  onNavigate,
+}: {
+  title?: string;
+  description?: string;
+  onNavigate?: (href: string) => void;
+} = {}) {
+  const { t, i18n } = useTranslation();
   const zh = i18n.language?.toLowerCase().startsWith("zh");
   const tr = useCallback((l: Lang) => (zh ? l.zh : l.en), [zh]);
 
@@ -316,8 +324,8 @@ export default function SpaceDashboard() {
   return (
     <div>
       <PageHeader
-        title={tr({ zh: "学习空间", en: "Learning Space" })}
-        description={tr({
+        title={title ?? t("navigation.resources")}
+        description={description ?? tr({
             zh: "你的对话、智能体、笔记与题目，集中在一处 —— 从这里进入。",
             en: "Your conversations, agents, notebooks, and questions in one place — enter from here.",
           })}
@@ -335,6 +343,7 @@ export default function SpaceDashboard() {
                   key={item.key}
                   item={item}
                   count={counts[item.key]}
+                  onNavigate={onNavigate}
                   tr={tr}
                 />
               ))}
@@ -350,9 +359,11 @@ function DashboardCard({
   item,
   count,
   tr,
+  onNavigate,
 }: {
   item: DashboardItem;
   count: number | undefined;
+  onNavigate?: (href: string) => void;
   tr: (l: Lang) => string;
 }) {
   const Icon = item.icon;
@@ -364,7 +375,11 @@ function DashboardCard({
 
   return (
     <Link
-      href={item.key === "journal" ? scopedUrl(item.href) : item.href}
+      href={onNavigate ? `/preview#resource/${encodeURIComponent(item.href)}` : item.key === "journal" ? scopedUrl(item.href) : item.href}
+      onClick={onNavigate ? event => {
+        event.preventDefault();
+        onNavigate(item.href);
+      } : undefined}
       className="group relative flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--foreground)]/20 hover:shadow-[0_6px_20px_-12px_rgba(0,0,0,0.25)]"
     >
       <div className="flex items-start gap-3">

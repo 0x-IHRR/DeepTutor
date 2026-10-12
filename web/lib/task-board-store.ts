@@ -47,12 +47,12 @@ export async function refreshTaskBoard() {
 }
 
 /** One account-level connection, owned by the workspace shell, outside its scope reset. */
-export function startTaskBoardSync() {
+export function startTaskBoardSync({ stream = true }: { stream?: boolean } = {}) {
   if (++owners === 1) {
     const unsubscribe = subscribeTaskBoardChanges(accept)
     void refreshTaskBoard()
     const source =
-      typeof EventSource !== 'undefined'
+      stream && typeof EventSource !== 'undefined'
         ? new EventSource(taskBoardUrl('/events'), { withCredentials: true })
         : null
     let fallback: ReturnType<typeof setInterval> | undefined
@@ -74,7 +74,7 @@ export function startTaskBoardSync() {
         clearInterval(fallback)
         fallback = undefined
       }
-    } else startFallback()
+    } else if (stream) startFallback()
     const focus = () => {
       if (!document.hidden) void refreshTaskBoard()
     }

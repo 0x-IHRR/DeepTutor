@@ -200,7 +200,7 @@ function PartnerDetail() {
       selectionEpochRef.current += 1;
       setSessionKey(key);
       if (continuityEnabled) {
-        if (alreadySaved) return;
+        if (alreadySaved) return key;
         selectionMutationRef.current = true;
         setSwitchingSession(true);
         try {
@@ -209,9 +209,11 @@ function PartnerDetail() {
             session_key: key,
           });
           if (state.session_key && state.session_key !== key) setSessionKey(state.session_key);
+          return state.session_key || key;
         } catch (error) {
           setToast(error instanceof Error ? error.message : t("Action failed"));
           await reconcileSelection();
+          return null;
         } finally {
           selectionMutationRef.current = false;
           setSwitchingSession(false);
@@ -219,10 +221,44 @@ function PartnerDetail() {
       } else {
         if (accountId) persistPartnerSessionKey(partnerId, key, accountId);
         setLocalSessionKey(key);
+        return key;
       }
     },
     [partnerId, continuityEnabled, accountId, reconcileSelection, t],
   );
+
+  // Sidebar links name an existing actor-owned conversation. Resolve it through
+  // the same selection path as Archive/Resume, preserving web continuity locks.
+  const requestedSession = searchParams.get("session") || "";
+  const requestedSelection = useRef("");
+  const selectionQuery = searchParams.toString();
+  const selectSessionKey = useCallback(async (key: string, alreadySaved = false) => {
+    const selected = await changeSessionKey(key, alreadySaved);
+    if (!selected) return;
+    requestedSelection.current = `${partnerId}:${selected}`;
+    const query = new URLSearchParams(selectionQuery);
+    query.set("session", selected);
+    query.delete("tab");
+    router.replace(`/partners/${encodeURIComponent(partnerId)}?${query}`, { scroll: false });
+  }, [changeSessionKey, partnerId, router, selectionQuery]);
+  useEffect(() => {
+    if (!requestedSession) { requestedSelection.current = ""; return; }
+    if (!continuityReady) return;
+    const identity = `${partnerId}:${requestedSession}`;
+    if (requestedSelection.current === identity) return;
+    let alive = true;
+    void getPartnerSessions(partnerId).then(async rows => {
+      if (!alive) return;
+      requestedSelection.current = identity;
+      if (!rows.some(row => row.session_key === requestedSession && !row.archived)) {
+        setToast(t("navigation.sessionUnavailable"));
+        return;
+      }
+      setTab("chat");
+      await changeSessionKey(requestedSession);
+    }).catch(() => { if (alive) setToast(t("navigation.loadError")); });
+    return () => { alive = false; };
+  }, [requestedSession, continuityReady, partnerId, changeSessionKey, t]);
 
   const toggleContinuity = useCallback(async () => {
     if (!continuityReady || continuityBusy || switchingSession || runtimeContinuityError || chatBusy || !sessionKey) return;
@@ -334,10 +370,10 @@ function PartnerDetail() {
       const result = await archivePartnerSession(partnerId, sessionKey);
       setChatMessages([]);
       if (continuityEnabled) {
-        if (result.active_session_key) changeSessionKey(result.active_session_key, true);
+        if (result.active_session_key) selectSessionKey(result.active_session_key, true);
         else await reconcileSelection();
       } else {
-        changeSessionKey(freshPartnerSessionKey());
+        selectSessionKey(freshPartnerSessionKey());
       }
       setToast(t("Archived conversation"));
     } catch (error) {
@@ -347,7 +383,7 @@ function PartnerDetail() {
     }
   }, [
     archiveBusy,
-    changeSessionKey,
+    selectSessionKey,
     chatMessages.length,
     continuityEnabled,
     partnerId,
@@ -658,7 +694,7 @@ function PartnerDetail() {
               color={partner.color}
               avatar={partner.avatar}
               sessionKey={sessionKey}
-              onSessionKeyChange={changeSessionKey}
+              onSessionKeyChange={selectSessionKey}
               onToast={setToast}
               onMessagesChange={setChatMessages}
               onRuntimeReady={handleRuntimeReady}
@@ -677,18 +713,18 @@ function PartnerDetail() {
               onMessagesChange={setArchiveMessages}
               onDeleted={(deletedKey, activeKey) => {
                 if (continuityEnabled) {
-                  if (activeKey) changeSessionKey(activeKey, true);
+                  if (activeKey) selectSessionKey(activeKey, true);
                   else if (deletedKey === sessionKey) void reconcileSelection();
                 } else if (deletedKey === sessionKey) {
-                  changeSessionKey(freshPartnerSessionKey());
+                  selectSessionKey(freshPartnerSessionKey());
                 }
               }}
               onResume={(key, activeKey, didCallResume) => {
                 if (continuityEnabled && didCallResume) {
-                  if (activeKey) changeSessionKey(activeKey, true);
+                  if (activeKey) selectSessionKey(activeKey, true);
                   else void reconcileSelection();
                 } else {
-                  changeSessionKey(key);
+                  selectSessionKey(key);
                 }
                 setTab("chat");
               }}

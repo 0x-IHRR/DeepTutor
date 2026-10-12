@@ -3,15 +3,16 @@ import type { Book } from '@/lib/book-types'
 import type { MasteryTopic } from '@/lib/learning-api'
 import type { ReadingWorkspace } from '@/lib/reading-workspace-api'
 import type { SessionSummary } from '@/lib/session-api'
-import { bookRoute, masteryTopicRoute, readingCollectionRoute } from '@/lib/learning-routes'
+import { bookRoute, masteryTopicRoute, readingCollectionRoute, practiceRoute } from '@/lib/learning-routes'
 import { sessionRoute } from '@/lib/mastery-session'
 
-export type LearningKind = 'books' | 'mastery' | 'reading' | 'watching'
+export type LearningKind = 'books' | 'mastery' | 'reading' | 'watching' | 'practice'
 export type Located<T> = T & { content_workspace_id?: string; content_workspace_name?: string }
 export interface LearningSources {
   books: Located<Book>[]
   mastery: Located<MasteryTopic>[]
   reading: Located<ReadingWorkspace>[]
+  practice?: Located<{ id: number; question: string; created_at: number; updated_at: number }>[]
   watching: SessionSummary[]
 }
 export interface LearningActivity {
@@ -30,8 +31,16 @@ export function isWatchingSession(session: SessionSummary): boolean {
   )
 }
 /** Every activity across the surfaces, newest first. Archived paths are not work in progress. */
-function allLearningActivity(sources: LearningSources): LearningActivity[] {
+export function allLearningActivity(sources: LearningSources): LearningActivity[] {
   return [
+    ...(sources.practice ?? []).map(entry => ({
+      key: `practice:${entry.content_workspace_id || ""}:${entry.id}`,
+      kind: 'practice' as const,
+      title: entry.question,
+      href: scopedUrl(practiceRoute(new URLSearchParams({ question: String(entry.id) }), ""), entry.content_workspace_id || ""),
+      updatedAt: entry.updated_at || entry.created_at,
+      workspaceName: entry.content_workspace_name,
+    })),
     ...sources.books.map(book => ({
       key: `book:${book.content_workspace_id || ""}:${book.id}`,
       kind: 'books' as const,
@@ -61,7 +70,7 @@ function allLearningActivity(sources: LearningSources): LearningActivity[] {
       workspaceName: workspace.content_workspace_name,
     })),
     ...sources.watching.filter(isWatchingSession).map(session => ({
-      key: `session:${session.session_id}`,
+      key: `session:${session.content_workspace_id || ""}:${session.session_id}`,
       kind: 'watching' as const,
       title: session.title,
       href: sessionRoute(session),
@@ -85,6 +94,7 @@ export function learningSurfaceStats(
     mastery: { count: 0 },
     reading: { count: 0 },
     watching: { count: 0 },
+    practice: { count: 0 },
   }
   // Sorted newest first, so the first activity seen for a kind is its latest.
   for (const activity of allLearningActivity(sources)) {

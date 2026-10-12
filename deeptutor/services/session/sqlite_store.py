@@ -4064,6 +4064,23 @@ class SQLiteSessionStore:
             item["practice"] = practice.get(int(item["id"]))
         return {"items": items, "total": total}
 
+    async def list_notebook_navigation(self) -> list[dict[str, Any]]:
+        """Read small question identities for navigation, without hydrating answers.
+
+        Uses the same recycle predicate as the Question Bank. No new schema or
+        migration: old entry IDs remain the IDs used by practice and review.
+        """
+        def read() -> list[dict[str, Any]]:
+            with self._connect() as conn:
+                return [dict(row) for row in conn.execute(
+                    "SELECT id, substr(question, 1, 160) AS question, created_at, updated_at "
+                    "FROM notebook_entries WHERE "
+                    + _NOT_RECYCLED_ENTRY_SQL.format(entries="notebook_entries")
+                    + " ORDER BY updated_at DESC, id DESC"
+                ).fetchall()]
+
+        return await self._run(read)
+
     async def list_notebook_entries(
         self,
         category_id: int | None = None,

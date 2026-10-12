@@ -28,6 +28,7 @@ export function useSidebarDrawer() {
 interface AppShellProps {
   /** The route group's sidebar (workspace or utility). */
   sidebar: ReactNode;
+  homeHref?: string;
   children: ReactNode;
 }
 
@@ -47,7 +48,7 @@ interface AppShellProps {
  * the very first server-rendered paint is already correct on a phone. JS only
  * owns the part that is stateful anyway: whether the drawer is open.
  */
-export default function AppShell({ sidebar, children }: AppShellProps) {
+export default function AppShell({ sidebar, children, homeHref = "/" }: AppShellProps) {
   const { t } = useTranslation();
   const pathname = usePathname();
   const { isMobile } = useDevice();
@@ -110,7 +111,7 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
             >
               <Menu size={18} strokeWidth={1.7} />
             </button>
-            <Link href="/" className="flex items-center gap-1.5">
+            <Link href={homeHref} className="flex items-center gap-1.5">
               <Image
                 src="/logo.png"
                 alt="DeepTutor"

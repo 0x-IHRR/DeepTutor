@@ -706,6 +706,11 @@ async def require_learning_surface(
     """Second-stage default-deny guard for configured learning accounts."""
     from deeptutor.multi_user.learning_access import assert_learning_surface
 
+    # This aggregate filters each source by the current policy itself. Exact
+    # GET only: it must never open the rest of the dashboard to learners.
+    if request.method == "GET" and request.url.path == "/api/dashboard/learning-index":
+        return
+
     try:
         assert_learning_surface(
             _learning_surface_for_path(

@@ -6590,6 +6590,48 @@
         "title": "MoveRecordRequest",
         "type": "object"
       },
+      "NavigationSession": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "partner",
+              "group"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "owner_id": {
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "owner_name": {
+            "title": "Owner Name",
+            "type": "string"
+          },
+          "session_key": {
+            "title": "Session Key",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "owner_id",
+          "owner_name",
+          "session_key",
+          "title",
+          "updated_at"
+        ],
+        "title": "NavigationSession",
+        "type": "object"
+      },
       "NetworkSettingsUpdate": {
         "properties": {
           "backend_port": {
@@ -7228,6 +7270,48 @@
           }
         },
         "title": "PartnerInvocationActionRequest",
+        "type": "object"
+      },
+      "PartnerNavigation": {
+        "properties": {
+          "groups": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "partners": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Partners",
+            "type": "array"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/NavigationSession"
+            },
+            "title": "Sessions",
+            "type": "array"
+          },
+          "unavailable": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unavailable",
+            "type": "array"
+          }
+        },
+        "required": [
+          "partners",
+          "groups",
+          "sessions",
+          "unavailable"
+        ],
+        "title": "PartnerNavigation",
         "type": "object"
       },
       "PartnerSeatRetryRequest": {
@@ -36931,6 +37015,72 @@
           }
         },
         "summary": "Confirm Partner Draft",
+        "tags": [
+          "partners"
+        ]
+      }
+    },
+    "/api/partners/navigation": {
+      "get": {
+        "description": "Read existing identities and actor-scoped sessions without moving data.\n\nNever enumerate the manager's global partner directories or shared channel\nhistory here. Visibility and transcript ownership match the detail APIs.",
+        "operationId": "partner_navigation_api_partners_navigation_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartnerNavigation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Partner Navigation",
         "tags": [
           "partners"
         ]

@@ -3,7 +3,7 @@ import type { ComponentPropsWithRef, ReactNode, Ref, UIEventHandler } from 'reac
 /** Feature page standard, based on Personalized Learning:
  * - Centered 1180px outer box; horizontal gutters 24px, 36px from 768px.
  * - Vertical padding 28px, 36px from 1024px; 24px from header to content.
- * - Serif page title 27px / 30px at 640px of usable content; no title icon.
+ * - Sans page title 27px / 30px at 640px of usable content; no title icon.
  * - Sans description 12.5px, section label 13.5px; one h1 per page.
  * - Actions stack below the title under 640px of content and wrap in order.
  * - Grids share 520 / 800 / 1040px container breakpoints and a 12px gap.
@@ -51,7 +51,7 @@ export function FeaturePage({
   )
 }
 
-export const PAGE_TITLE_CLASS = 'dt-page-title min-w-0 break-words font-serif font-semibold leading-normal tracking-[-0.02em] text-[var(--foreground)]'
+export const PAGE_TITLE_CLASS = 'dt-page-title min-w-0 break-words font-sans font-semibold leading-normal tracking-[-0.02em] text-[var(--foreground)]'
 export const PAGE_DESCRIPTION_CLASS = 'mt-1.5 max-w-2xl text-[12.5px] leading-relaxed text-[var(--muted-foreground)]'
 export const PAGE_SECTION_TITLE_CLASS = 'text-[13.5px] font-semibold text-[var(--foreground)]'
 

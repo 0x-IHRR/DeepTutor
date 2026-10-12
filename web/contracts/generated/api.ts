@@ -5811,6 +5811,29 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/partners/navigation": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /**
+     * Partner Navigation
+     * @description Read existing identities and actor-scoped sessions without moving data.
+     *
+     *     Never enumerate the manager's global partner directories or shared channel
+     *     history here. Visibility and transcript ownership match the detail APIs.
+     */
+    readonly get: operations["partner_navigation_api_partners_navigation_get"];
+    readonly put?: never;
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/partners/recent": {
     readonly parameters: {
       readonly query?: never;
@@ -14170,6 +14193,24 @@ export interface components {
       /** Target Notebook Id */
       readonly target_notebook_id: string;
     };
+    /** NavigationSession */
+    readonly NavigationSession: {
+      /**
+       * Kind
+       * @enum {string}
+       */
+      readonly kind: "partner" | "group";
+      /** Owner Id */
+      readonly owner_id: string;
+      /** Owner Name */
+      readonly owner_name: string;
+      /** Session Key */
+      readonly session_key: string;
+      /** Title */
+      readonly title: string;
+      /** Updated At */
+      readonly updated_at: number;
+    };
     /** NetworkSettingsUpdate */
     readonly NetworkSettingsUpdate: {
       /** Backend Port */
@@ -14514,6 +14555,21 @@ export interface components {
        * @default default
        */
       readonly session_key: string;
+    };
+    /** PartnerNavigation */
+    readonly PartnerNavigation: {
+      /** Groups */
+      readonly groups: readonly {
+        readonly [key: string]: unknown;
+      }[];
+      /** Partners */
+      readonly partners: readonly {
+        readonly [key: string]: unknown;
+      }[];
+      /** Sessions */
+      readonly sessions: readonly components["schemas"]["NavigationSession"][];
+      /** Unavailable */
+      readonly unavailable: readonly string[];
     };
     /** PartnerSeatRetryRequest */
     readonly PartnerSeatRetryRequest: {
@@ -17481,6 +17537,8 @@ export type SchemaMoveBlockRequest = components["schemas"]["MoveBlockRequest"];
 export type SchemaMoveFilePayload = components["schemas"]["MoveFilePayload"];
 export type SchemaMoveRecordRequest =
   components["schemas"]["MoveRecordRequest"];
+export type SchemaNavigationSession =
+  components["schemas"]["NavigationSession"];
 export type SchemaNetworkSettingsUpdate =
   components["schemas"]["NetworkSettingsUpdate"];
 export type SchemaNotebookCaptureRequest =
@@ -17507,6 +17565,8 @@ export type SchemaPartnerGroupMessageRequest =
   components["schemas"]["PartnerGroupMessageRequest"];
 export type SchemaPartnerInvocationActionRequest =
   components["schemas"]["PartnerInvocationActionRequest"];
+export type SchemaPartnerNavigation =
+  components["schemas"]["PartnerNavigation"];
 export type SchemaPartnerSeatRetryRequest =
   components["schemas"]["PartnerSeatRetryRequest"];
 export type SchemaPauseBookRequest = components["schemas"]["PauseBookRequest"];
@@ -30332,6 +30392,39 @@ export interface operations {
         };
         content: {
           readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly partner_navigation_api_partners_navigation_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["PartnerNavigation"];
         };
       };
       /** @description Validation Error */

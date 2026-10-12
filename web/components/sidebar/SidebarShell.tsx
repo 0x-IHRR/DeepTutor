@@ -14,10 +14,10 @@ import {
   type CSSProperties,
 } from "react";
 import { useAppShell } from "@/context/AppShellContext";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { MessageCircle, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useChatWorkspaces } from "@/hooks/useChatWorkspaces";
-import SessionList from "@/components/SessionList";
+
 import { useSidebarDrawer } from "@/components/layout/AppShell";
 import { useDevice } from "@/hooks/useDevice";
 import { VersionBadge } from "@/components/sidebar/VersionBadge";
@@ -29,7 +29,8 @@ import type { MasteryTopicLabel } from "@/lib/learning-api";
 import type { ReadingCollectionLabel } from "@/lib/reading-workspace-api";
 import type { StudyCourse } from "@/lib/courses-api";
 import { useSidebarResize } from "@/hooks/useSidebarResize";
-import { SidebarHome, SidebarNav } from "@/components/sidebar/SidebarNav";
+import { CategoryBody, CategoryTabs, useCategoryNavigation } from "@/components/sidebar/CategoryNavigation";
+import { isLearningSession } from "@/lib/navigation";
 import { SECONDARY_NAV, isNavActive } from "@/components/sidebar/nav-entries";
 import Tooltip from "@/shared/ui/Tooltip";
 import {
@@ -37,6 +38,9 @@ import {
   readSessionOrder,
   writeSessionOrder,
 } from "@/lib/sidebar-layout";
+
+// The fallback history list is needed only by shells without organization.
+const SessionList = dynamic(() => import("@/components/SessionList"), { ssr: false });
 
 // Session data arrives after mount; defer its organization UI with it so
 // every workspace route does not download it as part of the initial shell.
@@ -58,6 +62,13 @@ const OrganizedSessionList = dynamic(
 );
 
 interface SidebarShellProps {
+  /** Reuse the shell's resizing/collapse behavior with embedded navigation. */
+  homeSlot?: (collapsed: boolean) => ReactNode;
+  bodySlot?: (collapsed: boolean) => ReactNode;
+  footerOverride?: (collapsed: boolean) => ReactNode;
+  brandHref?: string;
+  initialWidth?: number;
+  widthStorageKey?: string;
   sessions?: SessionSummary[];
   activeSessionId?: string | null;
   /** Conversations the caller is streaming right now; they sort to the top. */
@@ -89,6 +100,12 @@ interface SidebarShellProps {
 }
 
 export function SidebarShell({
+  homeSlot,
+  bodySlot,
+  footerOverride,
+  brandHref = "/",
+  initialWidth = 272,
+  widthStorageKey,
   sessions = [],
   activeSessionId = null,
   liveSessionIds,
@@ -105,6 +122,7 @@ export function SidebarShell({
   footerSlot,
 }: SidebarShellProps) {
   const pathname = usePathname();
+  const categoryNav = useCategoryNavigation();
   const router = useRouter();
   const { t } = useTranslation();
   const { sidebarCollapsed, setSidebarCollapsed: setCollapsed } = useAppShell();
@@ -119,7 +137,7 @@ export function SidebarShell({
   // already hidden when you don't want it, so it always opens fully expanded
   // regardless of the persisted desktop preference.
   const collapsed = sidebarCollapsed && !isMobile;
-  const resize = useSidebarResize(collapsed || isMobile);
+  const resize = useSidebarResize(collapsed || isMobile, initialWidth, widthStorageKey);
 
   /** Dismiss the drawer on nav clicks that actually navigate in-place. */
   const closeDrawerOnNav = (event: React.MouseEvent) => {
@@ -178,128 +196,15 @@ export function SidebarShell({
   // rendering and exposes older conversations through Show more.
   const visibleSessions = sessions.filter(
     (session) =>
-      !session.preferences?.archived && !session.preferences?.parent_session_id,
+      !session.preferences?.archived && !session.preferences?.parent_session_id &&
+      (!bodySlot ? (categoryNav.category === "learning" ? isLearningSession(session) : !isLearningSession(session)) : true) &&
+      (!categoryNav.query || session.title.toLocaleLowerCase().includes(categoryNav.query.toLocaleLowerCase())),
   );
 
-  /* ---- Collapsed state ---- */
-  if (collapsed) {
-    return (
-      <aside className="group/sb relative flex h-dvh w-[60px] shrink-0 flex-col items-center bg-[var(--secondary)] py-3 transition-all duration-200">
-        {/* Header: logo + collapse toggle (toggle replaces logo on hover) */}
-        <div className="relative mb-2 flex h-9 w-9 items-center justify-center">
-          <Link
-            href="/"
-            prefetch={false}
-            aria-label="DeepTutor"
-            className="flex items-center justify-center transition-opacity duration-150 group-hover/sb:opacity-0"
-          >
-            <Image
-              src="/logo.png"
-              alt="DeepTutor"
-              width={22}
-              height={22}
-              className="h-[22px] w-[22px] rounded-md"
-            />
-          </Link>
-          <button
-            onClick={() => setCollapsed(false)}
-            className="absolute inset-0 flex items-center justify-center rounded-lg text-[var(--muted-foreground)] opacity-0 transition-all duration-150 hover:bg-background/60 hover:text-[var(--foreground)] group-hover/sb:opacity-100"
-            aria-label={t("Expand sidebar")}
-          >
-            <PanelLeftOpen size={16} />
-          </button>
-        </div>
-
-        <SidebarHome collapsed onHomeClick={handleHomeClick} />
-        <div className="min-h-0 w-full flex-1 overflow-y-auto overscroll-contain">
-          <SidebarNav
-            collapsed
-            onHomeClick={handleHomeClick}
-            onNavigate={closeDrawerOnNav}
-          />
-        </div>
-
-        {/* Secondary nav + footer */}
-        <div className="flex w-full shrink-0 flex-col items-center gap-1 px-1.5">
-          <div className="my-1 h-px w-7 bg-border/40" />
-          {SECONDARY_NAV.map((item) => {
-            const active = isNavActive(pathname, item.href);
-            return (
-              <Tooltip key={item.href} label={t(item.label) as string} side="right">
-                <Link
-                  href={item.href}
-                  prefetch={false}
-                  aria-label={t(item.label) as string}
-                  className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
-                    active
-                      ? "bg-[var(--accent)] text-[var(--foreground)] shadow-sm"
-                      : "text-foreground/85 hover:bg-background/60 hover:text-[var(--foreground)]"
-                  }`}
-                >
-                  <item.icon size={18} strokeWidth={active ? 2 : 1.6} />
-                </Link>
-              </Tooltip>
-            );
-          })}
-          {renderedFooter}
-          <VersionBadge onNavigate={closeDrawerOnNav} />
-        </div>
-      </aside>
-    );
-  }
-
-  /* ---- Expanded state ---- */
-  return (
-    <aside
-      style={{ "--sidebar-width": `${resize.width}px` } as CSSProperties}
-      className="relative flex h-dvh w-[var(--sidebar-width)] max-w-[45vw] shrink-0 flex-col bg-[var(--secondary)] max-md:w-[220px] max-md:max-w-[85vw]"
-    >
-      {/* Header: logo + collapse toggle */}
-      <div className="flex h-[52px] shrink-0 items-center justify-between px-4">
-        <Link href="/" prefetch={false} className="group flex items-center gap-1.5">
-          <Image
-            src="/logo.png"
-            alt="DeepTutor"
-            width={22}
-            height={22}
-            className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
-          />
-          <Image
-            src="/banner.png"
-            alt="DeepTutor"
-            width={897}
-            height={236}
-            priority
-            className="h-[22px] w-auto transition-transform duration-200 group-hover:scale-105"
-          />
-        </Link>
-        {/* The rail is a desktop affordance; in the drawer the scrim and the
-            top-bar toggle already own "make this go away". */}
-        <button
-          onClick={() => setCollapsed(true)}
-          className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] max-md:hidden"
-          aria-label={t("Collapse sidebar")}
-        >
-          <PanelLeftClose size={15} />
-        </button>
-      </div>
-
-      <SidebarHome onHomeClick={handleHomeClick} />
-
-      {/* Modules and conversations share one scroll region below Home. */}
-      <div
-        ref={recentsScrollRef}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2"
-      >
-        <SidebarNav
-          scrollRef={recentsScrollRef}
-          collapsed={false}
-          onHomeClick={handleHomeClick}
-          onNavigate={closeDrawerOnNav}
-        />
-
-        {/* Conversation history follows the module entries in the same scroller. */}
+  const sessionContent = <>
+{/* Conversation history follows the module entries in the same scroller. */}
         {showSessions &&
+        (categoryNav.category !== "learning" || loadingSessions || visibleSessions.length > 0) &&
         onSelectSession &&
         onRenameSession &&
         onDeleteSession ? (
@@ -356,10 +261,121 @@ export function SidebarShell({
             )}
           </section>
         ) : null}
+</>;
+
+  /* ---- Collapsed state ---- */
+  if (collapsed) {
+    return (
+      <aside className={`${bodySlot ? "" : "dt-product-sidebar"} group/sb relative flex h-dvh w-[60px] shrink-0 flex-col items-center bg-[var(--secondary)] py-3 transition-all duration-200`}>
+        {/* Header: logo + collapse toggle (toggle replaces logo on hover) */}
+        <div className="relative mb-2 flex h-9 w-9 items-center justify-center">
+          <Link
+            href={brandHref}
+            prefetch={false}
+            aria-label="DeepTutor"
+            className="flex items-center justify-center transition-opacity duration-150 group-hover/sb:opacity-0"
+          >
+            <Image
+              src="/logo.png"
+              alt="DeepTutor"
+              width={22}
+              height={22}
+              className="h-[22px] w-[22px] rounded-md"
+            />
+          </Link>
+          <button
+            onClick={() => setCollapsed(false)}
+            className="absolute inset-0 flex items-center justify-center rounded-lg text-[var(--muted-foreground)] opacity-0 transition-all duration-150 hover:bg-background/60 hover:text-[var(--foreground)] group-hover/sb:opacity-100"
+            aria-label={t("Expand sidebar")}
+          >
+            <PanelLeftOpen size={16} />
+          </button>
+        </div>
+
+        {homeSlot ? homeSlot(true) : <CategoryTabs nav={categoryNav} collapsed />}
+        <div className="min-h-0 w-full flex-1 overflow-y-auto overscroll-contain">
+          {bodySlot ? bodySlot(true) : <CategoryBody nav={categoryNav} collapsed sessions={null} />}
+        </div>
+
+        {/* Secondary nav + footer */}
+        {footerOverride ? footerOverride(true) : <div className="flex w-full shrink-0 flex-col items-center gap-1 px-1.5">
+          <Tooltip label={t("navigation.newChat")} side="right"><Link prefetch={false} href="/chat" onClick={handleHomeClick} aria-label={t("navigation.newChat")} className="dt-nav-icon"><MessageCircle size={20} /></Link></Tooltip>
+          <div className="my-1 h-px w-7 bg-border/40" />
+          {SECONDARY_NAV.map((item) => {
+            const active = isNavActive(pathname, item.href);
+            return (
+              <Tooltip key={item.href} label={t(item.label) as string} side="right">
+                <Link
+                  href={item.href}
+                  prefetch={false}
+                  aria-label={t(item.label) as string}
+                  className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
+                    active
+                      ? "bg-[var(--accent)] text-[var(--foreground)] shadow-sm"
+                      : "text-foreground/85 hover:bg-background/60 hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  <item.icon size={18} strokeWidth={active ? 2 : 1.6} />
+                </Link>
+              </Tooltip>
+            );
+          })}
+          {renderedFooter}
+          <VersionBadge onNavigate={closeDrawerOnNav} />
+        </div>}
+      </aside>
+    );
+  }
+
+  /* ---- Expanded state ---- */
+  return (
+    <aside
+      style={{ "--sidebar-width": `${resize.width}px` } as CSSProperties}
+      className={`${bodySlot ? "" : "dt-product-sidebar"} relative flex h-dvh w-[var(--sidebar-width)] max-w-[45vw] shrink-0 flex-col bg-[var(--secondary)] max-md:w-[220px] max-md:max-w-[85vw]`}
+    >
+      {/* Header: logo + collapse toggle */}
+      <div className="flex h-[52px] shrink-0 items-center justify-between px-4">
+        <Link href={brandHref} prefetch={false} className="group flex items-center gap-1.5">
+          <Image
+            src="/logo.png"
+            alt="DeepTutor"
+            width={22}
+            height={22}
+            className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
+          />
+          <Image
+            src="/banner.png"
+            alt="DeepTutor"
+            width={897}
+            height={236}
+            priority
+            className="h-[22px] w-auto transition-transform duration-200 group-hover:scale-105"
+          />
+        </Link>
+        {/* The rail is a desktop affordance; in the drawer the scrim and the
+            top-bar toggle already own "make this go away". */}
+        <button
+          onClick={() => setCollapsed(true)}
+          className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] max-md:hidden"
+          aria-label={t("Collapse sidebar")}
+        >
+          <PanelLeftClose size={15} />
+        </button>
+      </div>
+
+      {homeSlot ? homeSlot(false) : <CategoryTabs nav={categoryNav} collapsed={false} />}
+
+      {/* Modules and conversations share one scroll region below Home. */}
+      <div
+        ref={recentsScrollRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2"
+      >
+        {bodySlot ? bodySlot(false) : <CategoryBody nav={categoryNav} collapsed={false} sessions={sessionContent} />}
       </div>
 
       {/* Secondary nav + footer */}
-      <div className="shrink-0 border-t border-border/40 px-2 py-2">
+      {footerOverride ? footerOverride(false) : <div className="shrink-0 px-2 py-2">
+        <Link prefetch={false} href="/chat" onClick={handleHomeClick} className="dt-new-conversation"><MessageCircle size={18} strokeWidth={1.6} /><span>{t("navigation.newChat")}</span></Link>
         {renderedFooter}
         <div className="flex items-center gap-1">
           {SECONDARY_NAV.map((item) => {
@@ -383,7 +399,7 @@ export function SidebarShell({
           })}
           <VersionBadge onNavigate={closeDrawerOnNav} />
         </div>
-      </div>
+      </div>}
       {!isMobile && (
         <div
           role="separator"

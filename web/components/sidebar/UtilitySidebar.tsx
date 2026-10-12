@@ -12,7 +12,7 @@ import { ProfileLink } from "@/components/auth/ProfileLink";
 import { useAppShell } from "@/context/AppShellContext";
 import {
   deleteSession,
-  listSessions,
+  listAllSessions,
   updateSessionOrganization,
   updateSessionTitle,
   type SessionOrganizationPatch,
@@ -51,7 +51,7 @@ export default function UtilitySidebar() {
       // Labels only name a heading, so losing them costs grouping, not the list.
       const [nextSessions, nextCourses, nextTopics, nextCollections] =
         await Promise.all([
-          listSessions(50, 0, { force: true, allWorkspaces: true }),
+          listAllSessions({ force: true, allWorkspaces: true }),
           listCourses({ force: true }).catch(() => [] as StudyCourse[]),
           fetchMasteryTopicIndex().catch(() => [] as MasteryTopicLabel[]),
           fetchReadingCollectionIndex().catch(() => [] as ReadingCollectionLabel[]),

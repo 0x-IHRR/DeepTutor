@@ -82,6 +82,7 @@ async def get_learning_index():
     from deeptutor.api.routers.book import list_books
     from deeptutor.api.routers.mastery_path import list_topics
     from deeptutor.api.routers.reading import list_workspaces
+    from deeptutor.multi_user.learning_access import current_learning_policy
     from deeptutor.services.workspace.navigation import read_workspace_indexes
 
     async def books():
@@ -93,9 +94,14 @@ async def get_learning_index():
     async def reading():
         return (await list_workspaces(search=""))["workspaces"]
 
-    result = {}
+    policy = current_learning_policy()
+    allowed = set(policy.get("allowed_surfaces") or ["chat", "reading"]) if policy is not None else None
+    result = {"books": [], "mastery": [], "reading": [], "watching": [], "practice": []}
     failed = []
     for kind, reader in (("books", books), ("mastery", mastery), ("reading", reading)):
+        surface = "chat" if kind == "mastery" else kind
+        if allowed is not None and surface not in allowed:
+            continue
         result[kind], unavailable = await read_workspace_indexes(reader)
         if unavailable:
             failed.append(kind)
@@ -107,13 +113,26 @@ async def get_learning_index():
         return [
             row
             for row in rows
-            if (row.get("preferences") or {}).get("workspace_mode") == "immersive_watching"
-            or (row.get("preferences") or {}).get("capability") == "immersive_watching"
+            if not (row.get("preferences") or {}).get("archived")
+            and (
+                (row.get("preferences") or {}).get("workspace_mode") == "immersive_watching"
+                or (row.get("preferences") or {}).get("capability") == "immersive_watching"
+            )
         ]
 
-    result["watching"], unavailable = await read_workspace_indexes(watching)
-    if unavailable:
-        failed.append("watching")
+    if allowed is None or "reading" in allowed:
+        result["watching"], unavailable = await read_workspace_indexes(watching)
+        if unavailable:
+            failed.append("watching")
+    if allowed is None or "chat" in allowed:
+        async def practice():
+            from deeptutor.services.session import get_sqlite_session_store
+
+            return await get_sqlite_session_store().list_notebook_navigation()
+
+        result["practice"], unavailable = await read_workspace_indexes(practice)
+        if unavailable:
+            failed.append("practice")
     return {"sources": result, "failed": failed}
 
 

@@ -19,6 +19,7 @@ vi.mock("@/hooks/useAuthStatus", () => ({
 vi.mock("@/hooks/useChatWorkspaces", () => ({ useChatWorkspaces: () => ({ workspaces: [], error: "" }) }));
 
 vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(),
   usePathname: () => "/co-writer",
   useRouter: () => ({ push: fixture.push }),
 }));
@@ -67,8 +68,6 @@ it("loads conversation history while navigation remains usable, then preserves s
     />,
   );
   expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "Co-Writer" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: /More/ }));
   expect(screen.getByRole("link", { name: "Co-Writer" })).toHaveAttribute(
     "href",
     "/co-writer",
@@ -77,10 +76,10 @@ it("loads conversation history while navigation remains usable, then preserves s
   const history = await screen.findByText("Retained session");
   const scroller = history.closest(".overflow-y-auto");
   expect(scroller).toContainElement(
-    screen.getByRole("link", { name: "Partners" }),
+    screen.getByRole("link", { name: "Co-Writer" }),
   );
   expect(scroller).not.toContainElement(
-    screen.getByRole("link", { name: "Home" }),
+    screen.getByRole("tab", { name: "navigation.home" }),
   );
   expect(scroller).not.toContainElement(
     screen.getByRole("link", { name: "Settings" }),
@@ -114,9 +113,9 @@ it("keeps Home pinned even when a previous layout folded it into More", () => {
     }),
   );
   render(<SidebarShell />);
-  expect(screen.getAllByRole("link", { name: "Home" })).toHaveLength(1);
+  expect(screen.getAllByRole("tab", { name: "navigation.home" })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Arrange Home" })).toBeNull();
-  fireEvent.click(screen.getByRole("link", { name: "Home" }));
+  fireEvent.click(screen.getByRole("link", { name: "navigation.newChat" }));
   expect(fixture.push).toHaveBeenCalledWith("/chat");
 });
 
@@ -124,16 +123,16 @@ it("resizes with the keyboard, persists across mounts, and resets on double clic
   const first = render(<SidebarShell />);
   const handle = screen.getByRole("separator", { name: "Resize sidebar" });
   fireEvent.keyDown(handle, { key: "ArrowRight" });
-  expect(handle).toHaveAttribute("aria-valuenow", "230");
+  expect(handle).toHaveAttribute("aria-valuenow", "282");
   expect(
     first.container
       .querySelector("aside")!
       .style.getPropertyValue("--sidebar-width"),
-  ).toBe("230px");
+  ).toBe("282px");
   first.unmount();
   render(<SidebarShell />);
   const restored = screen.getByRole("separator", { name: "Resize sidebar" });
-  expect(restored).toHaveAttribute("aria-valuenow", "230");
+  expect(restored).toHaveAttribute("aria-valuenow", "282");
   fireEvent.keyDown(restored, { key: "Home" });
   fireEvent.keyDown(restored, { key: "ArrowLeft" });
   expect(restored).toHaveAttribute("aria-valuenow", "220");
@@ -143,5 +142,5 @@ it("resizes with the keyboard, persists across mounts, and resets on double clic
     restored.getAttribute("aria-valuemax"),
   );
   fireEvent.doubleClick(restored);
-  expect(restored).toHaveAttribute("aria-valuenow", "220");
+  expect(restored).toHaveAttribute("aria-valuenow", "272");
 });

@@ -35,6 +35,7 @@ import { useTranslation } from "react-i18next";
 import type { SelectedRecord } from "@/lib/notebook-selection-types";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
+
 import ChatComposer from "@/components/chat/home/ChatComposer";
 import { ChatMessageList } from "@/features/chat/messages";
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
@@ -153,6 +154,8 @@ import {
   type SelectionTutorContext,
 } from "@/lib/selection-tutor";
 import { shouldReturnToChatAfterResearch } from "@/lib/deep-research-report";
+
+const HomeShortcuts = dynamic(() => import("@/components/chat/home/HomeShortcuts").then(module => module.HomeShortcuts));
 
 const NotebookRecordPicker = dynamic(
   () => import("@/components/notebook/NotebookRecordPicker"),
@@ -2498,7 +2501,7 @@ export default function ChatWorkspace() {
                 </div>
               ) : !hasMessages ? (
                 <div className="flex w-full flex-1 min-h-0 items-end justify-center pb-14 animate-fade-in px-6">
-                  <div className="w-full max-w-[960px] flex items-center justify-center gap-4">
+                  <div className="w-full max-w-[960px] flex flex-col items-center justify-center gap-4">
                     <img
                       src="/logo_black.png"
                       alt="DeepTutor"
@@ -2507,7 +2510,8 @@ export default function ChatWorkspace() {
                       className="h-10 w-10 select-none"
                       draggable={false}
                     />
-                    <h1 className="font-serif text-[40px] font-medium leading-[1.1] tracking-[-0.015em] text-[var(--foreground)]">
+                    <p className="text-sm font-medium text-muted-foreground">Dito</p>
+                    <h1 className="font-sans text-[36px] font-medium leading-[1.1] tracking-[-0.015em] text-[var(--foreground)]">
                       {t(welcomeGreeting)}
                     </h1>
                   </div>
@@ -2788,6 +2792,7 @@ export default function ChatWorkspace() {
                 inputPlaceholder={askHint || undefined}
                 inputPlaceholderCompletion={askHint}
               />
+              {!hasMessages && !state.workspaceMode && <HomeShortcuts />}
               {/* Starter chips sit between the composer and the spacer, so they
                 ride up with the composer on the empty screen and disappear the
                 moment the conversation has a first message. Clicking one sends
