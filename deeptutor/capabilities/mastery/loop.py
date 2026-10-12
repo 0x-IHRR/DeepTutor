@@ -50,6 +50,18 @@ _PLAIN_QUIZ_PROMPT_RE = re.compile(
     r"\b(?:which|choose|select|answer)\b|选择|选哪个|请选择|请回答|答案",
     re.IGNORECASE,
 )
+# Defense in depth for explicit numbered assessments. Merely asking questions
+# while explaining is valid; require both answer/assessment intent and multiple
+# numbered question stems. This fallback does not replace registered groups.
+_MULTIPART_INTENT_RE = re.compile(
+    r"\b(?:answer these|practice questions|will grade (?:both|your|the) answers)\b|"
+    r"\b(?:válaszolj|gyakorló kérdés|ellenőrző kérdés)\w*\b|"
+    r"请回答|回答下面|练习题|检查题",
+    re.IGNORECASE,
+)
+_NUMBERED_QUESTION_RE = re.compile(
+    r"^\s*(?:\*\*)?\d{1,2}[.)、](?:\*\*)?\s+[^\n]*[?？]", re.MULTILINE
+)
 # A reply that announces a question without posing one. Matched against the
 # tail of the reply only, where an announcement lands, so ordinary discussion
 # of "this question" while reviewing an attempt does not trip it.
@@ -145,6 +157,13 @@ def _looks_like_plain_choice_quiz(text: str) -> bool:
         else:
             prompt_lines.append(line)
     return len(labels) >= 3 and any(_PLAIN_QUIZ_PROMPT_RE.search(line) for line in prompt_lines)
+
+
+def _looks_like_multipart_assessment(text: str) -> bool:
+    prose = _QUOTED_CARD_TEXT_RE.sub(" ", text)
+    return (
+        bool(_MULTIPART_INTENT_RE.search(prose)) and len(_NUMBERED_QUESTION_RE.findall(prose)) >= 2
+    )
 
 
 def _turn_has_graded(context: UnifiedContext) -> bool:
@@ -277,6 +296,10 @@ class MasteryLoopCapability:
             updated["_mastery_session_mode"] = context.metadata.get("mastery_session_mode")
             updated["_session_id"] = str(context.session_id or "").strip()
             updated["_turn_id"] = str(context.metadata.get("turn_id") or "").strip()
+            if tool_name == "mastery_quiz":
+                # A replacement needs a quote from the actual current learner
+                # request, not a model-supplied claim about their intention.
+                updated["_learner_message"] = context.user_message or ""
             if tool_name == "mastery_mode":
                 # The narrowest handle on the turn for a tool that changes what
                 # the rest of it may do — the same shape as ``_bind_active_path``
@@ -359,6 +382,17 @@ class MasteryLoopCapability:
                 "what puts the question on their card, and it ends the turn. If "
                 "you did not mean to quiz them yet, say what you meant to say "
                 "without announcing a question."
+            )
+        if not state.get("card_posted") and _looks_like_multipart_assessment(final_text):
+            return (
+                "That reply presented a new numbered assessment as unregistered prose. "
+                "For memory/procedure practice, call mastery_quiz with a questions group "
+                "so each answer has its own stored contract and result. If an older question "
+                "is pending, preserve it unless the learner explicitly requested replacement; "
+                "then use its current question ID and a literal replacement_request quote. "
+                "Do not concatenate expected answers or claim that a prose list is a card. "
+                "If this is teaching rather than assessment, explain directly without "
+                "instructing the learner to answer an unregistered practice set."
             )
         if _turn_has_graded(context) or not _looks_like_plain_choice_quiz(final_text):
             return None
@@ -517,6 +551,23 @@ class MasteryLoopCapability:
         if not isinstance(grade, dict) or not grade:
             return ""
         result = grade.get("result") if isinstance(grade.get("result"), dict) else {}
+        results = result.get("results")
+        if isinstance(results, list) and results:
+            parts = [
+                f"{item.get('question_id', '')}: "
+                f"{'ungraded' if item.get('is_correct') is None else ('correct' if item.get('is_correct') else 'incorrect')}; "
+                f"objective {item.get('knowledge_point_id', '')}; "
+                f"mastered={bool(item.get('mastered'))}"
+                for item in results
+                if isinstance(item, dict)
+            ]
+            return (
+                "[Mastery] The question group was already graded by the engine. "
+                "Do not grade it again or repeat its answer keys. Each result belongs "
+                "only to its own objective; the parent group gives no extra credit. "
+                "Address the specific gap, then use the fresh status for the next step.\n"
+                + "\n".join(parts)
+            )
         verdict = "correct" if grade.get("is_correct") else "incorrect"
         learner_answer = str(result.get("learner_answer") or "").strip()
         lines = [
