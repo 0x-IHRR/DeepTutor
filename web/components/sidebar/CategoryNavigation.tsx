@@ -93,7 +93,7 @@ export function CategoryTabs({ nav, collapsed }: { nav: Navigation; collapsed: b
         aria-orientation={collapsed ? 'vertical' : 'horizontal'}
       >
         {nav.categories.map((item, index) => (
-          <Tooltip key={item.id} label={t(item.label)} side={collapsed ? 'right' : 'bottom'}>
+          <Tooltip key={item.id} label={t(item.label)} side={collapsed ? 'right' : 'bottom'} className="dt-category-tab-wrap">
             <button
               id={`category-${item.id}`}
               type="button"
@@ -127,13 +127,14 @@ export function CategoryTabs({ nav, collapsed }: { nav: Navigation; collapsed: b
             >
               {nav.category === item.id && (
                 <m.span
-                  layoutId={`category-pill-${id}`}
-                  className="dt-category-pill"
+                  layoutId={`category-indicator-${id}`}
+                  className="dt-category-indicator"
+                  aria-hidden="true"
                   transition={{ duration: reduced ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
                 />
               )}
-              <item.icon size={20} strokeWidth={1.65} />
-              <span>{t(item.label)}</span>
+              <item.icon size={18} strokeWidth={nav.category === item.id ? 1.9 : 1.65} aria-hidden="true" />
+              <span className="dt-category-label">{t(item.label)}</span>
             </button>
           </Tooltip>
         ))}

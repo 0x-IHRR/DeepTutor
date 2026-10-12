@@ -1,5 +1,6 @@
 "use client";
 
+import { SettingsPageHeader } from '@/components/settings/shared'
 import { useSettings } from "@/features/settings/store/SettingsStore";
 import { useStagedSettings } from "@/features/settings/store/useStagedSettings";
 import { useEffect, useState } from "react";
@@ -50,11 +51,8 @@ export default function LearnerProfileSettingsPage() {
   };
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-8">
-      <h1 className="text-xl font-semibold">{t("Learner profile")}</h1>
-      <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-        {t("Personalize explanations and reading support for your account.")}
-      </p>
+    <main className="max-w-2xl">
+      <SettingsPageHeader title={t("Learner profile")} description={t("Personalize explanations and reading support for your account.")} />
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         {fields.map(([key, label]) => (
           <label key={key} className="grid gap-1 text-sm">

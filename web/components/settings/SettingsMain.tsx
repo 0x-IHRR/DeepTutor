@@ -1,6 +1,6 @@
 'use client'
 
-import { PageContainer } from '@/components/layout/FeaturePage'
+import { PageContainer, PageFrame } from '@/components/layout/FeaturePage'
 import { useEffect, useRef, useState } from 'react'
 import { browserStorage } from '@/shared/storage'
 import { usePathname, useRouter } from 'next/navigation'
@@ -77,6 +77,7 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
             <Menu size={20} />
           </button>
         </div>
+        <PageFrame>
         <div
           ref={scroller}
           data-settings-scroll
@@ -92,6 +93,7 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
           </PageContainer>
         </div>
         <SettingsToolbar />
+        </PageFrame>
       </main>
       <Modal
         isOpen={mobileOpen}

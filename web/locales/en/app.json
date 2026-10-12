@@ -5513,6 +5513,7 @@
   "Clear instructions": "Clear instructions",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} characters",
   "contextBudget.segment.workspace_instructions": "Workspace instructions",
+  "navigation.projects": "Projects",
   "navigation.home": "Home",
   "navigation.partners": "Partners",
   "navigation.learning": "Learning",

@@ -1,5 +1,6 @@
 "use client";
 
+import { PageToolbar } from '@/components/layout/PageToolbar'
 import { COMMAND_CONFIRMATION_FAILED } from "@/features/chat/transport/command-delivery";
 
 import { ResourceReuseContext, useResourceReusePolicy } from "@/components/chat/home/ResourceReuse";
@@ -2393,7 +2394,7 @@ export default function ChatWorkspace() {
             data-viewer-open={viewerPanelOpen ? "true" : "false"}
             className="chat-preview-shell flex h-full flex-col overflow-hidden bg-[var(--background)]"
           >
-            <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-6 pt-3 pb-0">
+            <PageToolbar>
               <div className="group/title min-w-0 flex flex-1 items-center gap-2">
                 {/* Where this conversation lives, ahead of its title — the same
                     breadcrumb the composer pill writes, so an opened
@@ -2428,7 +2429,7 @@ export default function ChatWorkspace() {
                     onKeyDown={handleSessionTitleKeyDown}
                     disabled={sessionTitleSaving}
                     aria-label={t("Session title")}
-                    className="min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--foreground)] shadow-sm outline-none transition focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20 disabled:opacity-60"
+                    className="min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 font-sans text-[14px] font-semibold tracking-[-0.01em] text-[var(--foreground)] shadow-sm outline-none transition focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20 disabled:opacity-60"
                     maxLength={100}
                   />
                 ) : (
@@ -2442,7 +2443,7 @@ export default function ChatWorkspace() {
                       type="button"
                       onClick={startSessionTitleEdit}
                       disabled={!canRenameSession}
-                      className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-xl px-2 py-1 text-left font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--foreground)] transition hover:bg-[var(--muted)]/55 disabled:cursor-default disabled:hover:bg-transparent"
+                      className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-xl px-2 py-1 text-left font-sans text-[14px] font-semibold tracking-[-0.01em] text-[var(--foreground)] transition hover:bg-[var(--muted)]/55 disabled:cursor-default disabled:hover:bg-transparent"
                     >
                       <span className="truncate">{displaySessionTitle}</span>
                       {canRenameSession ? (
@@ -2462,7 +2463,7 @@ export default function ChatWorkspace() {
                   </span>
                 ) : null}
               </div>
-              <div className="flex shrink-0 items-center gap-0.5">
+              <div className="dt-toolbar-actions">
                 <HeaderActionButton
                   onClick={() => setShowSaveModal(true)}
                   disabled={!chatSavePayload}
@@ -2490,7 +2491,7 @@ export default function ChatWorkspace() {
                   title={t("Session activity, attachments & previews")}
                 />
               </div>
-            </div>
+            </PageToolbar>
             <div className="flex w-full flex-1 min-h-0 flex-col">
               {sessionLoading || sessionLoadFailed ? (
                 <div className="flex w-full flex-1 min-h-0 justify-center px-6">

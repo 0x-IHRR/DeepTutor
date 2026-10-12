@@ -5,6 +5,7 @@
  * Header carries identity + run state; everything else lives in the tabs.
  */
 
+import { PageToolbar } from '@/components/layout/PageToolbar'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -501,8 +502,8 @@ function PartnerDetail() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="grid min-h-[64px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-[var(--border)] px-5 py-3">
-        <div className="flex min-w-0 items-center gap-3">
+      <PageToolbar>
+        <div className="dt-toolbar-identity">
           <Link
             href="/partners"
             aria-label={t("Back to Partners")}
@@ -540,25 +541,9 @@ function PartnerDetail() {
           </div>
         </div>
 
-        <nav className="flex justify-self-center gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
-          {tabs.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTab(key)}
-              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] transition-colors ${
-                activeTab === key
-                  ? "bg-[var(--background)] font-medium text-[var(--foreground)] shadow-sm"
-                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
-          ))}
-        </nav>
 
-        <div className="flex min-w-0 items-center justify-end gap-0.5">
+
+        <div className="dt-toolbar-actions">
           <Tooltip label={t("Share this conversation across browsers")}>
             <label className="mr-1 inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--muted-foreground)]">
               <input
@@ -659,7 +644,24 @@ function PartnerDetail() {
             </>
           ) : null}
         </div>
-      </div>
+      </PageToolbar>
+        <nav className="dt-page-view-tabs">
+          {tabs.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] transition-colors ${
+                activeTab === key
+                  ? "bg-[var(--background)] font-medium text-[var(--foreground)] shadow-sm"
+                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          ))}
+        </nav>
 
       {showLinkModal ? (
         <PartnerLinkModal

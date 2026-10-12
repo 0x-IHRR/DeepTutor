@@ -5893,6 +5893,7 @@
   "Clear instructions": "Effacer les instructions",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} caractères",
   "contextBudget.segment.workspace_instructions": "Instructions de l’espace de travail",
+  "navigation.projects": "Projets",
   "navigation.home": "Accueil",
   "navigation.partners": "Partenaires",
   "navigation.learning": "Apprentissage",

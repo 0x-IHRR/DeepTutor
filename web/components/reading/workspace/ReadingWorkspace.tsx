@@ -1,5 +1,6 @@
 "use client";
 
+import { PageToolbar } from '@/components/layout/PageToolbar'
 import { scopedUrl } from "@/lib/workspace-scope";
 import { READING_HOME, readingFolderRoute, readingSessionIdFromPath } from "@/lib/learning-routes";
 
@@ -448,7 +449,7 @@ export function ReadingWorkspacePage() {
       data-reading-workspace=""
       className="reading-v2 flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background)] text-[var(--foreground)] dark:bg-[var(--background)] dark:text-[var(--foreground)]"
     >
-      <header className="flex h-11 shrink-0 items-center gap-1.5 border-b border-[var(--border)] bg-[var(--card)] px-2.5">
+      <PageToolbar>
         <Link
           href={readingFolderRoute(workspace.workspace_id)}
           className="flex size-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)]"
@@ -481,7 +482,7 @@ export function ReadingWorkspacePage() {
             <button
               type="button"
               onClick={() => setShowRename(true)}
-              className="min-w-0 max-w-[240px] truncate font-serif text-[13.5px] font-semibold tracking-[-0.01em] transition hover:text-[var(--primary)]"
+              className="min-w-0 max-w-[240px] truncate font-sans text-[14px] font-semibold tracking-[-0.01em] transition hover:text-[var(--primary)]"
             >
               {workspace.title}
             </button>
@@ -498,7 +499,7 @@ export function ReadingWorkspacePage() {
           </button>
         </Tooltip>
 
-        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        <div className="dt-toolbar-actions ml-auto">
           {notice && (
             <span className="hidden max-w-[220px] truncate px-2 text-[10px] text-[var(--muted-foreground)] 2xl:inline">
               {notice}
@@ -585,7 +586,7 @@ export function ReadingWorkspacePage() {
             </Tooltip>
           )}
         </div>
-      </header>
+      </PageToolbar>
 
       <div
         ref={gridRef}

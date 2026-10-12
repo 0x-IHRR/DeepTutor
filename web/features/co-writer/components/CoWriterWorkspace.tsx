@@ -1,5 +1,6 @@
 "use client";
 
+import { PageToolbar } from '@/components/layout/PageToolbar'
 import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1701,7 +1702,7 @@ export default function CoWriterWorkspace({ docId, onBack }: CoWriterWorkspacePr
   return (
     <div className="flex h-full min-h-full flex-col overflow-hidden bg-[var(--background)]">
       {/* ── Top bar ── */}
-      <header className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-1.5">
+      <PageToolbar>
         <div className="flex min-w-0 items-center gap-3 text-sm text-[var(--muted-foreground)]">
           <Tooltip label={t("Back to documents")}>
             <button
@@ -1772,7 +1773,7 @@ export default function CoWriterWorkspace({ docId, onBack }: CoWriterWorkspacePr
             </span>
           ) : null}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="dt-toolbar-actions">
           <ToolbarIconBtn
             title={t("Clear")}
             onClick={requestClearDocument}
@@ -1827,7 +1828,7 @@ export default function CoWriterWorkspace({ docId, onBack }: CoWriterWorkspacePr
             {t("Full Draft")}
           </button>
         </div>
-      </header>
+      </PageToolbar>
 
       {/* ── Toolbar ── */}
       <div className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[var(--border)] px-3 py-1">

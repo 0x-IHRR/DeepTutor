@@ -1,5 +1,6 @@
 "use client";
 
+import { PageToolbar } from '@/components/layout/PageToolbar'
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -124,7 +125,7 @@ export default function PartnerGroupPage() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {selectionError && <div role="alert" className="border-b border-border px-6 py-2 text-xs text-destructive">{selectionError}</div>}
-      <header className="flex shrink-0 items-center justify-between gap-4 border-b border-[var(--border)] px-4 py-3 sm:px-6">
+      <PageToolbar>
         <div className="flex min-w-0 items-center gap-3">
           <Link
             href="/partners"
@@ -166,7 +167,7 @@ export default function PartnerGroupPage() {
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="dt-toolbar-actions">
           {sessionKey ? (
             <GroupSessionPicker
               groupId={groupId}
@@ -216,7 +217,7 @@ export default function PartnerGroupPage() {
             {t("Manage")}
           </button>
         </div>
-      </header>
+      </PageToolbar>
 
       <PartnerGroupChat
         group={group}

@@ -63,6 +63,7 @@ it('keeps unassigned chats in a peer Recent section with independent five-row li
     activeSessionId={null} onSelect={vi.fn()} onRename={vi.fn()} onDelete={vi.fn()} onOrganize={vi.fn()} />)
   const workspaceGroup = view.container.querySelector('[data-group-id="workspace:physics"]')! as HTMLElement
   const recentGroup = view.container.querySelector('[data-group-id="recent:unassigned"]')! as HTMLElement
+  expect(screen.getByRole('heading', { name: 'navigation.projects' }).nextElementSibling).toBe(workspaceGroup)
   expect(workspaceGroup.parentElement).toBe(recentGroup.parentElement)
   expect(workspaceGroup.nextElementSibling).toBe(recentGroup)
   expect(within(recentGroup).queryByText('Lesson 0')).toBeNull()

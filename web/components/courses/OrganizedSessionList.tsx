@@ -736,6 +736,11 @@ export default function OrganizedSessionList({
   return (
     <div className="py-0.5">
       {workspaceMoveError && <p role="alert" className="px-2 py-1 text-xs text-[var(--destructive)]">{workspaceMoveError}</p>}
+      {groupWorkspaces && entries.some(entry => entry.kind === "group" && entry.group === "workspace") && (
+        <h2 className="mb-1 px-1.5 py-1 text-[12.5px] font-medium text-[var(--foreground)]">
+          {t("navigation.projects")}
+        </h2>
+      )}
       {entries.map((entry) =>
         entry.kind === "group"
           ? renderGroup(entry)

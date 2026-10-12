@@ -1,5 +1,6 @@
 "use client";
 
+import { SettingsPageHeader } from '@/components/settings/shared'
 import { useStagedSettings } from "@/features/settings/store/useStagedSettings";
 import { useEffect, useState } from "react";
 import {
@@ -175,11 +176,8 @@ export default function GuardianSettingsPage() {
   };
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-8">
-      <h1 className="text-xl font-semibold">{t("Guardian management")}</h1>
-      <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-        {t("Review authorized learners and their approved learning materials.")}
-      </p>
+    <main className="max-w-3xl">
+      <SettingsPageHeader title={t("Guardian management")} description={t("Review authorized learners and their approved learning materials.")} />
 
       {error && (
         <p className="mt-4 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600">

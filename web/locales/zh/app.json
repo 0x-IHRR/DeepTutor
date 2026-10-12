@@ -5513,6 +5513,7 @@
   "Clear instructions": "清空提示词",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} 字符",
   "contextBudget.segment.workspace_instructions": "工作区提示词",
+  "navigation.projects": "项目",
   "navigation.home": "主页",
   "navigation.partners": "伙伴",
   "navigation.learning": "学习",
