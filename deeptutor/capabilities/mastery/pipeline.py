@@ -27,7 +27,9 @@ from typing import Any
 
 from deeptutor.agents.loop.pipeline import AgenticLoopPipeline
 from deeptutor.agents.loop.prompt_blocks import LoopPromptAssembler, PromptBlock
+from deeptutor.capabilities.mastery.history import STATE_REFERENCE_NOTICE, share_mastery_history
 from deeptutor.capabilities.mastery.loop import NATIVE_LOOP_FLAG
+from deeptutor.capabilities.mastery.memory import MEMORY_NOTICE
 from deeptutor.capabilities.mastery.mode import normalize_mode
 from deeptutor.core.context import UnifiedContext
 
@@ -41,6 +43,11 @@ class MasteryPromptAssembler(LoopPromptAssembler):
     "design the outline" and "clear what is due" produce very different right
     answers from the same playbook.
     """
+
+    def blocks(self, **kwargs):
+        if getattr(self, "native_tool_schemas", False):
+            kwargs["include_tool_manifest"] = False
+        return super().blocks(**kwargs)
 
     def foundation_blocks(self, context: UnifiedContext) -> list[PromptBlock]:
         kind = normalize_mode(context.metadata.get("mastery_session_mode"))
@@ -68,6 +75,35 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
     prompt_base_module = "chat"
     prompt_base_agent = "agentic_chat"
     prompt_assembler_class = MasteryPromptAssembler
+
+    async def _capability_pre_loop_briefings(self, context, stream):
+        briefing = await super()._capability_pre_loop_briefings(context, stream)
+        snapshot = context.extension("mastery").get("status_snapshot")
+        return briefing.replace(snapshot, "", 1).strip() if snapshot else briefing
+
+    def _build_system_prompt(self, enabled_tools, context, *, include_tool_manifest=True):
+        self._prompt_assembler.native_tool_schemas = (
+            bool(enabled_tools) and self._can_use_native_tool_calling()
+        )
+        prompt = super()._build_system_prompt(
+            enabled_tools, context, include_tool_manifest=include_tool_manifest,
+        )
+        snapshot = context.extension("mastery").get("status_snapshot")
+        if snapshot:
+            self._runtime_snapshots["mastery_status_snapshot"] = snapshot
+        return prompt + STATE_REFERENCE_NOTICE + MEMORY_NOTICE
+
+    def project_model_request(self, messages):
+        from copy import deepcopy
+
+        projected = deepcopy(messages)
+        share_mastery_history(projected, len(projected))
+        return projected
+
+    def _build_loop_messages(self, **kwargs):
+        messages = super()._build_loop_messages(**kwargs)
+        share_mastery_history(messages, self._model_turn_start)
+        return messages
 
     async def run(self, context: UnifiedContext, stream: Any) -> dict[str, Any]:
         # Tells MasteryLoopCapability that the playbook is already the
