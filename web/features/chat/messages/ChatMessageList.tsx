@@ -1559,6 +1559,7 @@ export const UserMessage = memo(function UserMessage({
   onPreviewAttachment,
   onCopy,
   onEdit,
+  onDiscardFailedSubmission,
   editDisabled,
   siblingInfo,
   onSwitchBranch,
@@ -1572,6 +1573,7 @@ export const UserMessage = memo(function UserMessage({
   onPreviewAttachment?: (attachment: MessageAttachment) => void;
   onCopy?: CopyHandler;
   onEdit?: (messageId: number, newContent: string) => void;
+  onDiscardFailedSubmission?: (messageId: number) => boolean | Promise<boolean>;
   editDisabled?: boolean;
   siblingInfo?: SiblingInfo;
   onSwitchBranch?: (parentMessageId: number | null, childId: number) => void;
@@ -1588,6 +1590,8 @@ export const UserMessage = memo(function UserMessage({
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(msg.content);
+  const [discarding, setDiscarding] = useState(false);
+  const [discardFailed, setDiscardFailed] = useState(false);
   const { isComposingRef, onCompositionStart, onCompositionEnd } =
     useImeComposing();
   // Connected subagents ride in knowledge_bases (same selection path) but are
@@ -1602,7 +1606,19 @@ export const UserMessage = memo(function UserMessage({
   // the optimistic case by triggering a session reload to resolve the
   // real id before submitting the branch.
   const canEdit =
-    Boolean(onEdit) && typeof msg.id === "number" && !editDisabled;
+    Boolean(onEdit) && typeof msg.id === "number" && !editDisabled && !msg.failedSubmission;
+  const discardDraft = async () => {
+    if (!onDiscardFailedSubmission || typeof msg.id !== "number" || editDisabled || discarding) return;
+    setDiscarding(true);
+    setDiscardFailed(false);
+    try {
+      if (!await onDiscardFailedSubmission(msg.id)) setDiscardFailed(true);
+    } catch {
+      setDiscardFailed(true);
+    } finally {
+      setDiscarding(false);
+    }
+  };
   const startEdit = () => {
     if (!canEdit) return;
     setDraft(msg.content);
@@ -1833,8 +1849,17 @@ export const UserMessage = memo(function UserMessage({
           >
             <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
             {t("Not sent")}
+            {onDiscardFailedSubmission && typeof msg.id === "number" && msg.id < 0 && (
+              <button type="button" onClick={() => void discardDraft()} disabled={editDisabled || discarding}
+                className="ml-2 rounded-md px-2 py-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/50 disabled:cursor-not-allowed disabled:opacity-40">
+                {discarding ? t("Discarding…") : t("Discard unsent draft")}
+              </button>
+            )}
           </div>
         ) : null}
+        {discardFailed && <p role="alert" className="max-w-full text-right text-xs text-[var(--destructive)]">
+          {t("This draft could not be discarded. Please retry or copy it before leaving.")}
+        </p>}
         {!editing && refTreeItems.length > 0 && (
           <div className="pr-1">
             <ContextReferenceTree
@@ -1919,6 +1944,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   onPreviewAttachment,
   onOpenConsultation,
   onDeleteTurn,
+  onDiscardFailedSubmission,
   selectedBranches,
   onEditMessage,
   onSwitchBranch,
@@ -1951,6 +1977,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   onPreviewAttachment?: (attachment: MessageAttachment) => void;
   onOpenConsultation?: (events: StreamEvent[]) => void;
   onDeleteTurn?: (messageId: number) => void;
+  onDiscardFailedSubmission?: (messageId: number) => boolean | Promise<boolean>;
   /** Edit-branching: selected sibling at each branch point. */
   selectedBranches?: Record<string, number>;
   onEditMessage?: (messageId: number, newContent: string) => void;
@@ -2221,6 +2248,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                 onPreviewAttachment={onPreviewAttachment}
                 onCopy={onCopyAssistantMessage}
                 onEdit={onEditMessage}
+                onDiscardFailedSubmission={onDiscardFailedSubmission}
                 editDisabled={isStreaming}
                 siblingInfo={sib}
                 onSwitchBranch={onSwitchBranch}

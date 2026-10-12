@@ -30,6 +30,7 @@ const GIVE_UP_MS =
 const fixture = vi.hoisted(() => ({
   connected: false,
   sent: [] as Array<Record<string, unknown>>,
+  deleted: [] as number[],
   emit: undefined as undefined | ((event: Record<string, unknown>) => void),
   close: undefined as undefined | (() => void),
   session: undefined as undefined | Record<string, unknown>,
@@ -75,7 +76,10 @@ vi.mock("@/lib/session-api", () => ({
     events: [],
     total: 0,
   }),
-  deleteMessage: async () => ({}),
+  deleteMessage: async (_sessionId: string, messageId: number) => {
+    fixture.deleted.push(messageId);
+    return {};
+  },
   updateBranchSelection: async () => ({}),
   updateSessionTitle: async () => fixture.session ?? {},
   updateSessionReplyLanguage: async () => fixture.session ?? {},
@@ -131,9 +135,10 @@ function seedUnsentSubmission(content = "Hello offline") {
 }
 
 function Harness() {
+  const [discardResult, setDiscardResult] = useState<boolean | null>(null);
   const { state, sendMessage, resendLastMessage, loadSession, cancelStreamingTurn,
     configureSession, setPersonaSelection, setLLMSelection,
-    setReplyLanguageOverride } =
+    setReplyLanguageOverride, discardFailedSubmission, switchBranch } =
     useChatStateAdapter();
   return (
     <>
@@ -144,6 +149,26 @@ function Harness() {
       <button onClick={() => sendMessage("", [{ type: "image", filename: "figure.png", base64: "YWJj" }])}>Send image only</button>
       <button onClick={() => void resendLastMessage()}>Resend</button>
       <button onClick={cancelStreamingTurn}>Stop</button>
+      <button onClick={() => {
+        const draft = [...state.messages].reverse().find((message) => message.failedSubmission);
+        if (typeof draft?.id === "number") setDiscardResult(discardFailedSubmission(draft.id));
+      }}>Discard unsent</button>
+      <button onClick={() => {
+        const draft = state.messages.find((message) => message.failedSubmission);
+        if (typeof draft?.id === "number") setDiscardResult(discardFailedSubmission(draft.id));
+      }}>Discard first unsent</button>
+      <button onClick={() => {
+        const drafts = state.messages.filter((message) => message.failedSubmission);
+        if (typeof drafts[0]?.id === "number" && typeof drafts[1]?.id === "number") {
+          switchBranch(drafts[0].parentMessageId ?? null, drafts[0].id);
+          switchBranch(drafts[0].id, drafts[1].id);
+        }
+      }}>Select unsent branch</button>
+      <div data-testid="discardResult">{String(discardResult)}</div>
+      <div data-testid="references">{JSON.stringify({
+        messages: state.messages.map((message) => ({ id: message.id, content: message.content, parentMessageId: message.parentMessageId })),
+        selectedBranches: state.selectedBranches,
+      })}</div>
       <button onClick={() => {
         configureSession({
           capability: "deep_research", workspaceMode: "immersive_reading",
@@ -218,11 +243,114 @@ beforeEach(() => {
   resetReadingTurnState();
   fixture.connected = false;
   fixture.sent = [];
+  fixture.deleted = [];
   fixture.emit = undefined;
   fixture.close = undefined;
 });
 
 afterEach(() => vi.restoreAllMocks());
+
+it("discards only the local unsent shadow and does not resurrect it after reload", async () => {
+  fixture.session = completedServerSession();
+  seedUnsentSubmission();
+  fixture.connected = true;
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  expect(readMessages().at(-1)).toMatchObject({ content: "Hello offline", failed: true });
+  await act(async () => fireEvent.click(screen.getByText("Discard unsent")));
+  expect(readMessages().map((message) => message.content)).toEqual(["hi", "hello"]);
+  expect(fixture.sent).toHaveLength(0);
+  expect(fixture.deleted).toHaveLength(0);
+  expect(readFailedSubmissions("s1")).toEqual([]);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  expect(readMessages().map((message) => message.content)).toEqual(["hi", "hello"]);
+});
+
+it("discards one of two drafts without dropping history or breaking the remaining branch", async () => {
+  fixture.session = completedServerSession();
+  storeFailedSubmission("s1", { submissionId: "draft-a", content: "First local draft", requestSnapshot: { content: "First local draft" } });
+  storeFailedSubmission("s1", { submissionId: "draft-b", content: "Second local draft", requestSnapshot: { content: "Second local draft" } });
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  await act(async () => fireEvent.click(screen.getByText("Select unsent branch")));
+  const before = JSON.parse(screen.getByTestId("references").textContent!);
+  const removed = before.messages.find((message: { content: string }) => message.content === "First local draft");
+  const survivor = before.messages.find((message: { content: string }) => message.content === "Second local draft");
+  expect(before.selectedBranches[String(removed.id)]).toBe(survivor.id);
+  await act(async () => fireEvent.click(screen.getByText("Discard first unsent")));
+  const after = JSON.parse(screen.getByTestId("references").textContent!);
+  expect(after.messages.map((message: { content: string }) => message.content)).toEqual(["hi", "hello", "Second local draft"]);
+  expect(after.messages.at(-1).parentMessageId).toBe(2);
+  expect(after.selectedBranches["2"]).toBe(survivor.id);
+  expect(after.selectedBranches[String(removed.id)]).toBeUndefined();
+  expect(readFailedSubmissions("s1").map((record) => record.submissionId)).toEqual(["draft-b"]);
+  expect(fixture.sent).toHaveLength(0);
+  expect(fixture.deleted).toHaveLength(0);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  expect(readMessages().map((message) => message.content)).toEqual(["hi", "hello", "Second local draft"]);
+});
+
+it("keeps the recovery copy visible when neither storage can save its retirement", async () => {
+  fixture.session = completedServerSession();
+  seedUnsentSubmission();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  vi.spyOn(localStorage, "setItem").mockImplementation(() => { throw new Error("unavailable storage"); });
+  vi.spyOn(sessionStorage, "setItem").mockImplementation(() => { throw new Error("unavailable storage"); });
+  await act(async () => fireEvent.click(screen.getByText("Discard unsent")));
+  expect(screen.getByTestId("discardResult")).toHaveTextContent("false");
+  expect(readMessages().at(-1)).toMatchObject({ content: "Hello offline", failed: true });
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+  expect(fixture.deleted).toHaveLength(0);
+  expect(fixture.sent).toHaveLength(0);
+});
+
+it("retires a moved draft's bound source as well as its visible target copy", () => {
+  const id = storeFailedSubmission("draft:general", { content: "Bound draft", requestSnapshot: { content: "Bound draft" } })!;
+  const setItem = localStorage.setItem.bind(localStorage);
+  vi.spyOn(localStorage, "setItem").mockImplementation((key, value) => {
+    if (key.startsWith("deeptutor.failedSubmissions.record.s1:")) throw new Error("target quota");
+    setItem(key, value);
+  });
+  expect(moveFailedSubmissions("draft:general", "s1", [id])).toEqual([id]);
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+  expect(clearFailedSubmission("s1", id)).toBe(true);
+  expect(readFailedSubmissions("s1")).toEqual([]);
+  expect(readFailedSubmissions("draft:general")).toEqual([]);
+});
+
+it("does not erase a detectable same-ID retry advanced during retirement", () => {
+  const id = storeFailedSubmission("s1", { submissionId: "retry-id", content: "Pending copy",
+    requestSnapshot: { content: "Pending copy" } })!;
+  const before = readFailedSubmissions("s1")[0].savedAt;
+  const setItem = localStorage.setItem.bind(localStorage);
+  let advanced = false;
+  vi.spyOn(localStorage, "setItem").mockImplementation((key, value) => {
+    setItem(key, value);
+    if (!advanced && key === "deeptutor.failedSubmissions.cleared.s1:retry-id") {
+      advanced = true;
+      storeFailedSubmission("s1", { submissionId: id, content: "Pending copy",
+        requestSnapshot: { content: "Pending copy" } });
+    }
+  });
+  expect(clearFailedSubmission("s1", id)).toBe(false);
+  expect(advanced).toBe(true);
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+  expect(readFailedSubmissions("s1")[0].savedAt).toBeGreaterThan(before);
+});
+
+it("preserves a stopped-before-admission draft across reload", async () => {
+  fixture.session = completedServerSession();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  fireEvent.click(screen.getByText("Send"));
+  fireEvent.click(screen.getByText("Stop"));
+  expect(readMessages().at(-1)).toMatchObject({ content: "Hello offline", failed: true });
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  expect(readMessages().at(-1)).toMatchObject({ content: "Hello offline", failed: true });
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+  expect(fixture.sent).toHaveLength(0);
+});
 
 it("tracks attachment-only submissions with a stable identity for resend", async () => {
   fixture.connected = true;
