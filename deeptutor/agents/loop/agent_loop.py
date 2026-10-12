@@ -1050,6 +1050,9 @@ class AgentLoop:
         await self.pipeline._guard_context_window(request_messages, self.stream)
         stage = self.stage
         call_id = new_call_id(f"{self.source}-{stage}")
+        # Runtime-only invocation identity: reviewed mutations can require a
+        # subsequent model call, rather than trust an LLM-supplied argument.
+        self.context.extension("agent_loop")["model_call_id"] = call_id
         trace_meta = build_trace_metadata(
             call_id=call_id,
             phase=stage,
