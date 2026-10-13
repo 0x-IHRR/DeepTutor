@@ -282,6 +282,7 @@ export default function ChatWorkspace() {
     resendLastMessage,
     deleteTurn,
     discardFailedSubmission,
+    retryFailedSubmission,
     editMessage,
     switchBranch,
     newSession,
@@ -2581,6 +2582,7 @@ export default function ChatWorkspace() {
                         }}
                         onDeleteTurn={deleteTurn}
                         onDiscardFailedSubmission={discardFailedSubmission}
+                        onRetryFailedSubmission={retryFailedSubmission}
                         selectedBranches={state.selectedBranches}
                         onEditMessage={editMessage}
                         onSwitchBranch={switchBranch}

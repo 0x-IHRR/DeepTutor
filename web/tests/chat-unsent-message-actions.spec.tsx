@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 
@@ -29,12 +29,40 @@ it("offers per-draft local discard, without requiring an assistant placeholder",
   expect(discard.mock.calls).toEqual([[-2], [-3]]);
 });
 
-it("does not advertise unsupported editing for unsent local drafts", () => {
+it("offers editing for unsent local drafts through the recovery handler", () => {
   render(<ChatMessageList messages={messages.slice(0, 2)} isStreaming={false}
     onCopyAssistantMessage={async () => undefined} onRegenerateMessage={() => undefined}
     onEditMessage={() => undefined} />);
-  expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
   expect(screen.getByText("First unsent draft")).toBeInTheDocument();
+});
+
+it("retains the editor text until the asynchronous edit succeeds", async () => {
+  const user = userEvent.setup();
+  let complete!: (value: boolean) => void;
+  const edit = vi.fn(() => new Promise<boolean>((resolve) => { complete = resolve; }));
+  render(<ChatMessageList messages={messages.slice(0, 2)} isStreaming={false}
+    onCopyAssistantMessage={async () => undefined} onRegenerateMessage={() => undefined} onEditMessage={edit} />);
+  await user.click(screen.getByRole("button", { name: "Edit" }));
+  await user.clear(screen.getByRole("textbox"));
+  await user.type(screen.getByRole("textbox"), "Corrected draft");
+  await user.click(screen.getByRole("button", { name: "Send" }));
+  expect(screen.getByRole("textbox")).toHaveValue("Corrected draft");
+  expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  await act(async () => { complete(false); });
+  await vi.waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("edit could not be sent"));
+  expect(screen.getByRole("textbox")).toHaveValue("Corrected draft");
+  expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+});
+
+it("retries the selected unsent row rather than the tail", async () => {
+  const user = userEvent.setup();
+  const retry = vi.fn(async () => true);
+  const { container } = render(<ChatMessageList messages={messages} isStreaming={false}
+    onCopyAssistantMessage={async () => undefined} onRegenerateMessage={() => undefined} onRetryFailedSubmission={retry} />);
+  const first = within(container.querySelector('[data-chat-message-id="-2"]') as HTMLElement);
+  await user.click(first.getByRole("button", { name: "Retry" }));
+  expect(retry).toHaveBeenCalledExactlyOnceWith(-2);
 });
 
 it("retains the visible copy and reports a failed discard", async () => {
