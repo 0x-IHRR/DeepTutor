@@ -84,9 +84,9 @@ class MasteryContextBuilder(ContextBuilder):
             raise ValueError("Tutoring memory: provider truncated the response")
         return summary
 
-    def _model_tokens(self, messages, summary=""):
+    def _model_tokens(self, messages, summary="", route=None):
         return _count_model_context_tokens(
-            deduplicate_user_images(project_mastery_replay(replay_history(messages, summary)))
+            deduplicate_user_images(project_mastery_replay(replay_history(messages, summary, route)))
         )
 
     async def build(self, *, session_id, leaf_message_id=None, **kwargs):
@@ -103,7 +103,7 @@ class MasteryContextBuilder(ContextBuilder):
             session_id=session_id, leaf_message_id=leaf_message_id, **kwargs
         )
         result.model_history = project_mastery_replay(result.model_history or [])
-        result.token_count = _count_model_context_tokens(result.model_history)
+        result.token_count = _count_model_context_tokens(deduplicate_user_images(result.model_history))
         result.history_sources = sources
         return result
 
