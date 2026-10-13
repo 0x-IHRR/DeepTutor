@@ -279,6 +279,17 @@ class MasteryLoopCapability:
             updated["_turn_id"] = str(context.metadata.get("turn_id") or "").strip()
             if tool_name == "mastery_profile":
                 updated["_learner_message"] = context.user_message or ""
+                selection = int(state.get("profile_selection", 0)) + 1
+                state["profile_selection"] = selection
+                state["profile_write_pending"] = True
+
+                def profile_recorded(receipt):
+                    if (state.get("profile_selection") == selection
+                            and context.metadata.get("mastery_path_id") == path_id):
+                        state["profile_write_pending"] = False
+                        state["profile_receipt"] = receipt
+
+                updated["_profile_recorded"] = profile_recorded
             if tool_name == "mastery_mode":
                 # The narrowest handle on the turn for a tool that changes what
                 # the rest of it may do — the same shape as ``_bind_active_path``
@@ -333,6 +344,16 @@ class MasteryLoopCapability:
         if not self.is_active(context):
             return None
         state = context.extension("mastery")
+        if state.get("profile_write_pending") and not state.get("profile_repair_requested"):
+            state["profile_repair_requested"] = True
+            return (
+                "The selected mastery_profile update has no successful storage receipt. "
+                "If repairable, retry once with the current revision and only the requested "
+                "changed fields. Blank optional fields keep existing values. Otherwise continue "
+                "the useful teaching, apply the request for this turn, and explain that it was "
+                "not saved for future sessions. Do not claim durable persistence without a "
+                "successful receipt. Do not delay teaching with repeated optional profile retries."
+            )
         if state.get("quiz_requested") and not state.get("card_posted"):
             return (
                 "This turn selected mastery_quiz, but no question card was successfully "
@@ -404,14 +425,32 @@ class MasteryLoopCapability:
         if not self.is_active(context):
             return None
         state = context.extension("mastery")
+        notice = ""
+        if state.get("profile_write_pending"):
+            # Optional memory failure must not deadlock otherwise valid tutoring.
+            # The native status corrects any unsupported persistence promise;
+            # it does not classify or discard the learner-facing explanation.
+            state["profile_write_pending"] = False
+            state["profile_receipt"] = {"status": "not_saved"}
+            notice = (
+                "Storage status: the requested learner-profile update was not saved for "
+                "future sessions. It can still guide this conversation."
+            )
+
+        def with_notice(override):
+            if not notice:
+                return override
+            content = final_text if override is None else override
+            return notice + ("\n\n" + content if content.strip() else "")
+
         if not state.get("card_posted"):
-            return None
+            return with_notice(None)
         if final_text.strip():
             # A tool-less finish round already wrote the answer; the card was
             # posed earlier in the turn and has nothing to override.
-            return None
+            return with_notice(None)
         state["card_posted"] = False
-        return ""
+        return with_notice("")
 
     async def pre_loop(
         self, context: UnifiedContext, stream: Any, *, usage: Any = None

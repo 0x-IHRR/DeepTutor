@@ -1285,6 +1285,8 @@ class LearningService:
         teaching_updates: list[dict] | None = None,
         expected_revision: int | None = None,
         learner_message: str = "",
+        clear_fields: list[str] | None = None,
+        clear_request: str = "",
     ) -> tuple[LearningProgress, list[str]]:
         """Merge intake answers into this goal's learner profile.
 
@@ -1301,8 +1303,24 @@ class LearningService:
         cleaned = {
             key: str(value or "").strip()[:_MAX_PROFILE_FIELD_LEN]
             for key, value in fields.items()
-            if key in _LEARNER_PROFILE_FIELDS and value is not None
+            if key in _LEARNER_PROFILE_FIELDS and value is not None and str(value).strip()
         }
+        # Optional schema placeholders are not learner-authored deletions.
+        # Deletion has its own explicit, quoted, revision-fenced operation.
+        if clear_fields is not None and (
+            not isinstance(clear_fields, list)
+            or any(not isinstance(key, str) or key not in _LEARNER_PROFILE_FIELDS
+                   or key == "teaching_strategy" for key in clear_fields)
+        ):
+            raise ValueError("clear_fields must name intake text fields")
+        if clear_fields:
+            if not isinstance(clear_request, str) or not clear_request.strip() or clear_request not in learner_message:
+                raise ValueError("clear_request must be a literal quote from the current learner message")
+            if any(key in cleaned for key in clear_fields):
+                raise ValueError("Cannot update and clear the same profile field")
+            if type(expected_revision) is not int or expected_revision < 0:
+                raise ValueError("clear_fields requires the current path revision")
+            cleaned.update({key: "" for key in clear_fields})
         from deeptutor.learning.teaching import apply_teaching_updates, parse_teaching_updates
 
         updates = (
@@ -1335,7 +1353,7 @@ class LearningService:
             changed.extend(teaching_fields)
             if not changed:
                 return []
-            if updates and tx.progress.version != expected_revision:
+            if (updates or clear_fields) and tx.progress.version != expected_revision:
                 from deeptutor.learning.storage import LearningConflictError
 
                 raise LearningConflictError(book_id, expected_revision, tx.progress.version)
@@ -1352,7 +1370,7 @@ class LearningService:
             )
             return changed
 
-        return self._store.mutate(book_id, record, create=not bool(updates))
+        return self._store.mutate(book_id, record, create=not bool(updates or clear_fields))
 
     def abandon_active_question(self, book_id: str) -> tuple[LearningProgress, bool]:
         """Drop the outstanding question so the path can move on.

@@ -2056,12 +2056,15 @@ class MasteryProfileTool(BaseTool):
                 "to them, how much time they have, and how they want it "
                 "taught. Call it during intake — before designing the outline "
                 "— and again whenever they correct one of these. Pass only the "
-                "fields they actually spoke to; omitted fields keep what they "
+                "fields they actually spoke to; omitted, null or blank fields keep what they "
                 "said before. Never invent an answer they did not give. "
                 "For evolving teaching feedback use keyed teaching_updates: explicit "
                 "preferences or objective-local difficulties/attempts. Keep attempts "
                 "unknown until learner evidence shows helped/not_helped. Reuse a key "
-                "to correct it, remove obsolete entries, preserve unrelated keys."
+                "to correct it, remove obsolete entries, preserve unrelated keys. "
+                "To forget an intake field explicitly requested by the learner, use clear_fields "
+                "and quote that current request in clear_request. Global preferences across "
+                "unrelated paths belong in write_memory, only when explicitly requested."
             ),
             parameters=[
                 ToolParameter(
@@ -2116,9 +2119,7 @@ class MasteryProfileTool(BaseTool):
                     required=False,
                 ),
                 ToolParameter(
-                    name="teaching_updates",
-                    type="array",
-                    required=False,
+                    name="teaching_updates", type="array", required=False,
                     description=(
                         "1-6 keyed upsert/remove operations. Preference requires an explicit "
                         "learner_report with evidence. Observation requires a current path "
@@ -2131,10 +2132,17 @@ class MasteryProfileTool(BaseTool):
                     items=TeachingUpdate.model_json_schema(),
                 ),
                 ToolParameter(
-                    name="expected_revision",
-                    type="integer",
-                    required=False,
-                    description="Required with teaching_updates: path_revision from the current mastery snapshot. Refresh after conflict.",
+                    name="expected_revision", type="integer", required=False,
+                    description="Required with teaching_updates or clear_fields: path_revision from the current mastery snapshot. Refresh after conflict.",
+                ),
+                ToolParameter(
+                    name="clear_fields", type="array", required=False,
+                    description="Explicitly forget only the intake fields the learner asked to remove. Blank values never clear a field.",
+                    items={"type": "string", "enum": ["prior_knowledge", "target_level", "time_budget", "preferences", "notes"]},
+                ),
+                ToolParameter(
+                    name="clear_request", type="string", required=False,
+                    description="Literal quote from the current learner request authorizing clear_fields. Omit unless clearing.",
                 ),
             ],
         )
@@ -2154,10 +2162,11 @@ class MasteryProfileTool(BaseTool):
                 "teaching_strategy",
                 "notes",
             )
-            if key in kwargs and kwargs[key] is not None
+            if key in kwargs and kwargs[key] is not None and str(kwargs[key]).strip()
         }
         updates = kwargs.get("teaching_updates")
-        if not fields and updates is None:
+        clear_fields = kwargs.get("clear_fields")
+        if not fields and updates is None and not clear_fields:
             return ToolResult(
                 content=(
                     "mastery_profile needs at least one of prior_knowledge, "
@@ -2180,21 +2189,19 @@ class MasteryProfileTool(BaseTool):
 
         try:
             progress, changed = service.record_learner_profile(
-                path_id,
-                fields=fields,
-                session_id=_resolve_session_id(kwargs),
-                turn_id=_resolve_turn_id(kwargs),
-                teaching_updates=updates,
-                expected_revision=kwargs.get("expected_revision"),
+                path_id, fields=fields,
+                session_id=_resolve_session_id(kwargs), turn_id=_resolve_turn_id(kwargs),
+                teaching_updates=updates, expected_revision=kwargs.get("expected_revision"),
                 learner_message=str(kwargs.get("_learner_message") or ""),
+                clear_fields=clear_fields, clear_request=kwargs.get("clear_request") or "",
             )
         except (ValueError, LearningStoreError) as exc:
             return ToolResult(content=str(exc), success=False)
         except KeyError:
-            return ToolResult(
-                content="The bound mastery path no longer exists. Refresh the current path.",
-                success=False,
-            )
+            return ToolResult(content="The bound mastery path no longer exists. Refresh the current path.", success=False)
+        receipt = kwargs.get("_profile_recorded")
+        if callable(receipt):
+            receipt({"path_id": path_id, "path_revision": progress.version, "updated_fields": changed})
         return _json_result(
             {
                 "status": "recorded",
