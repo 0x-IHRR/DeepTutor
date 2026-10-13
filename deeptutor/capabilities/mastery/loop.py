@@ -423,6 +423,7 @@ class MasteryLoopCapability:
         context.extension("mastery").pop("status_snapshot", None)
         if not self.is_active(context) or not context.metadata.get("mastery_path_id"):
             return None
+        from deeptutor.capabilities.mastery.mode import normalize_mode
         from deeptutor.capabilities.mastery.tools import MasteryStatusTool
 
         binding = (
@@ -430,7 +431,8 @@ class MasteryLoopCapability:
             context.metadata.get("mastery_session_mode"),
         )
         result = await MasteryStatusTool().execute(
-            **self.augment_kwargs("mastery_status", {}, context)
+            **self.augment_kwargs("mastery_status", {}, context),
+            _working_brief=normalize_mode(context.metadata.get("mastery_session_mode")) != "outline",
         )
         if not result.success:
             return None

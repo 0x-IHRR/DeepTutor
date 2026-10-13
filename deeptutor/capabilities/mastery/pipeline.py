@@ -76,6 +76,46 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
     prompt_base_agent = "agentic_chat"
     prompt_assembler_class = MasteryPromptAssembler
 
+    async def _prepare_deferred_tools(self, context):
+        await super()._prepare_deferred_tools(context)
+        self._deferred_outline_names = set()
+        if normalize_mode(context.metadata.get("mastery_session_mode")) == "outline":
+            return
+        if (context.allowed_builtin_tools is not None
+                and "load_tools" not in context.allowed_builtin_tools):
+            return  # A restricted caller must retain eager access to owned tools.
+        from deeptutor.runtime.providers.view import ProviderToolView
+        from deeptutor.runtime.registry.deferred_tools import (
+            DeferredToolLoader,
+            render_deferred_tools_manifest,
+        )
+        from deeptutor.services.mcp import load_loaded_tools
+
+        view = self._tool_view
+        names = {"mastery_build", "mastery_revise", "mastery_revise_batch"}
+        owned = set(self._capability_owned_tools(context))
+        local = [view.registry.get(name) for name in sorted(names & owned)]
+        local = [tool for tool in local if tool is not None]
+        if not local:
+            return
+        self._deferred_outline_names = {tool.name for tool in local}
+        pool = (*view.pool, *local)
+        loaded = load_loaded_tools(context.session_id)
+        if view.loader:
+            loaded |= view.loader.loaded_names
+        loader = DeferredToolLoader(registry=view.registry, session_id=context.session_id,
+            loaded=loaded, allowed={tool.name for tool in pool},
+            capability_names=self._deferred_outline_names)
+        self._tool_view = ProviderToolView(registry=view.registry, loader=loader, pool=pool,
+            manifest="\n\n".join(filter(None, [view.manifest,
+                render_deferred_tools_manifest(local, language=self.language)])))
+        self._deferred_loader = loader
+        self._deferred_pool = list(pool)
+
+    def _compose_enabled_tools(self, context):
+        deferred = getattr(self, "_deferred_outline_names", set())
+        return [name for name in super()._compose_enabled_tools(context) if name not in deferred]
+
     async def _capability_pre_loop_briefings(self, context, stream):
         briefing = await super()._capability_pre_loop_briefings(context, stream)
         snapshot = context.extension("mastery").get("status_snapshot")
