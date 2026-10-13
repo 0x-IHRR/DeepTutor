@@ -674,5 +674,3 @@ def test_preparation_instructions_travel_in_actual_messages(material, monkeypatc
         return '{"queries":["membrane"]}'
     monkeypatch.setattr("deeptutor.services.llm.factory.complete_with_config", complete)
     assert asyncio.run(lessons._ask(material.config, "Return only JSON", {"objective": "membrane"})) == {"queries": ["membrane"]}
-
-
