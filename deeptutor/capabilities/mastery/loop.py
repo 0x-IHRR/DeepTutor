@@ -561,8 +561,19 @@ class MasteryLoopCapability:
                 for item in results
                 if isinstance(item, dict)
             ]
+            complete = result.get("complete", grade.get("complete", True)) is not False
+            status = (
+                "The question group was already graded by the engine. "
+                if complete else
+                "Only the submitted group replies were graded by the engine. "
+                "These children remain unanswered: "
+                + ", ".join(result.get("remaining_question_ids", [])) + ". "
+                "Preserve unanswered children and continue at the requested pace. "
+                "Explain reported gaps, but never infer confusion from an unanswered "
+                "item or invent its reply. "
+            )
             return (
-                "[Mastery] The question group was already graded by the engine. "
+                "[Mastery] " + status +
                 "Do not grade it again or repeat its answer keys. Each result belongs "
                 "only to its own objective; the parent group gives no extra credit. "
                 "Address the specific gap, then use the fresh status for the next step.\n"

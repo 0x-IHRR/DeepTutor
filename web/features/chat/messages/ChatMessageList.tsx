@@ -814,10 +814,10 @@ export const AssistantMessage = memo(function AssistantMessage({
         <MasteryQuestionCard
           question={question}
           grade={grade}
-          answered={Boolean(grade)}
+          answered={Boolean(grade) && grade?.complete !== false}
           skipped={masterySkips?.has(question.questionId) ?? false}
           submittedAnswer={grade?.learnerAnswer ?? ""}
-          rejectionKey={!grade ? masteryAnswerRejections?.get(question.questionId)?.retryKey : undefined}
+          rejectionKey={!grade || grade.complete === false ? masteryAnswerRejections?.get(question.questionId)?.retryKey : undefined}
           onSubmit={({ text, answers }) =>
             onAnswerMasteryQuestion
               ? onAnswerMasteryQuestion({

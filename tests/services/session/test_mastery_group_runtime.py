@@ -20,11 +20,33 @@ def test_card_contract_keeps_independent_group_answers():
 
 
 @pytest.mark.parametrize(
-    "answers", [{}, {"first": "A"}, {"first": "", "second": "B"}, {"first": 1, "second": "B"}]
+    "answers", [{}, {"first": "", "second": "B"}, {"first": 1, "second": "B"}]
 )
-def test_group_transport_rejects_incomplete_or_untyped_values(answers):
+def test_group_transport_rejects_empty_or_untyped_values(answers):
     with pytest.raises(ValidationError):
         MasteryCardAnswer(question_id="group", text="display", answers=answers)
+
+
+def test_group_transport_accepts_one_actual_reply():
+    card = MasteryCardAnswer(question_id="group", text="second only", answers={"second": "B"})
+    assert card.answers == {"second": "B"}
+
+
+def test_partial_group_seed_does_not_claim_unanswered_questions_were_graded():
+    context = UnifiedContext(metadata={
+        "mastery_mode": True,
+        "mastery_card_grade": {
+            "result": {
+                "question_type": "group", "complete": False,
+                "remaining_question_ids": ["first"],
+                "results": [{"question_id": "second", "is_correct": True}],
+            },
+        },
+    })
+    seed = MasteryLoopCapability().pre_loop_seed(context)
+    assert "first" in seed and "unanswered" in seed
+    assert "second: correct" in seed
+    assert "The question group was already graded" not in seed
 
 
 @pytest.mark.asyncio

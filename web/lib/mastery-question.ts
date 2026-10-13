@@ -53,7 +53,7 @@ export interface MasteryQuestion {
 
 export interface MasteryGradeResult {
   questionId: string;
-  isCorrect: boolean;
+  isCorrect: boolean | null;
   learnerAnswer: string;
   correctLabel: string;
   correctBody: string;
@@ -61,6 +61,9 @@ export interface MasteryGradeResult {
   result?: string;
   independent?: boolean;
   results?: MasteryGradeResult[];
+  /** Older complete grades omit these incremental-group fields. */
+  complete?: boolean;
+  remainingQuestionIds?: string[];
 }
 
 export interface MasteryAnswerRejection {
@@ -138,7 +141,7 @@ function parseGrade(value: unknown): MasteryGradeResult | null {
     : undefined;
   return {
     questionId,
-    isCorrect: raw.is_correct === true,
+    isCorrect: raw.is_correct === null ? null : raw.is_correct === true,
     learnerAnswer: text(raw.learner_answer),
     correctLabel: text(raw.correct_label),
     correctBody: text(raw.correct_body),
@@ -146,6 +149,10 @@ function parseGrade(value: unknown): MasteryGradeResult | null {
     ...(text(raw.result) ? { result: text(raw.result) } : {}),
     ...(typeof raw.independent === "boolean" ? { independent: raw.independent } : {}),
     ...(results ? { results } : {}),
+    ...(typeof raw.complete === "boolean" ? { complete: raw.complete } : {}),
+    ...(Array.isArray(raw.remaining_question_ids) ? {
+      remainingQuestionIds: raw.remaining_question_ids.filter((id): id is string => typeof id === "string" && Boolean(id.trim())),
+    } : {}),
   };
 }
 
@@ -264,6 +271,11 @@ export function collectMasteryAnswerRejections(
   for (const message of messages) {
     for (const event of message.events ?? []) {
       if (event.type !== "tool_result") continue;
+      // Successful partial acknowledgements supersede earlier rejection events,
+      // without hiding a later rejection of the remaining answers.
+      const gradePayload = asRecord(toolResultPayload(event.metadata, "mastery_grade"));
+      const grade = parseGrade(gradePayload?.result);
+      if (grade) rejected.delete(grade.questionId);
       const payload = asRecord(toolResultPayload(event.metadata, "mastery_answer_rejected"));
       const questionId = text(payload?.question_id).trim();
       if (!questionId) continue;

@@ -6,8 +6,10 @@ import { MasteryQuestionCard } from "@/components/chat/home/MasteryQuestionCard"
 import { ChatMessageList } from "@/features/chat/messages";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 import { initI18n } from "@/i18n/init";
+import type { UserReplyPayload } from "@/hooks/use-card-submission";
 import {
   collectMasteryGrades,
+  collectMasteryAnswerRejections,
   extractMasteryQuestion,
 } from "@/lib/mastery-question";
 
@@ -53,6 +55,16 @@ describe("grouped mastery assessment", () => {
     expect(JSON.stringify(withPrivateKeys)).not.toContain("private");
   });
 
+  it("clears old rejection on partial acknowledgement, but keeps a later rejection", () => {
+    const rejected = event({ mastery_answer_rejected: { question_id: "group-1" } });
+    const acknowledged = event({ mastery_grade: { result: { question_id: "group-1",
+      question_type: "group", complete: false, is_correct: null, results: [
+        { question_id: "part-a", is_correct: true, learner_answer: "A" },
+      ] } } });
+    expect(collectMasteryAnswerRejections([{ events: [rejected, acknowledged] }]).size).toBe(0);
+    expect(collectMasteryAnswerRejections([{ events: [acknowledged, rejected] }]).has("group-1")).toBe(true);
+  });
+
   it("rejects duplicate, nested, or incomplete group identities", () => {
     for (const questions of [[leaf("part-a")], [leaf("part-a"), leaf("part-a")],
       [leaf("part-a"), group]]) {
@@ -60,7 +72,7 @@ describe("grouped mastery assessment", () => {
     }
   });
 
-  it("requires both answers and sends one submission with stable child IDs", async () => {
+  it("allows one answer, or both together, with stable child IDs", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn(() => true);
     render(<MasteryQuestionCard question={question()} grade={null} answered={false}
@@ -68,7 +80,7 @@ describe("grouped mastery assessment", () => {
     const submit = screen.getByRole("button", { name: "Submit" });
     expect(submit).toBeDisabled();
     await user.click(screen.getByRole("button", { name: /Matching description/ }));
-    expect(submit).toBeDisabled();
+    expect(submit).toBeEnabled();
     await user.type(screen.getByRole("textbox"), "They have different roles");
     expect(submit).toBeEnabled();
     await user.click(submit);
@@ -79,6 +91,71 @@ describe("grouped mastery assessment", () => {
         { questionId: "part-b", text: "They have different roles" },
       ],
     });
+  });
+
+  it("keeps the remaining leaf editable on reload after a partial grade", async () => {
+    const onSubmit = vi.fn(() => true);
+    const grades = collectMasteryGrades([{ events: [event({ mastery_grade: {
+      result: { question_id: "group-1", question_type: "group", complete: false,
+        remaining_question_ids: ["part-b"], is_correct: null, result: "ungraded",
+        results: [{ question_id: "part-a", is_correct: true, learner_answer: "A", explanation: "Confirmed first part." }] },
+    } })] }]);
+    expect(grades.get("group-1")).toMatchObject({ complete: false, isCorrect: null, remainingQuestionIds: ["part-b"] });
+    const user = userEvent.setup();
+    render(<MasteryQuestionCard question={question()} grade={grades.get("group-1")!}
+      answered={false} submittedAnswer="" onSubmit={onSubmit} />);
+    expect(screen.getByText("Correct")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Matching description/ })).toBeDisabled();
+    expect(screen.getByRole("textbox")).toBeEnabled();
+    await user.type(screen.getByRole("textbox"), "Remaining answer");
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith({ text: "2. Remaining answer",
+      answers: [{ questionId: "part-b", text: "Remaining answer" }] });
+  });
+
+  it("releases the sending latch on partial acknowledgement and preserves unsent edits", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn<(payload: UserReplyPayload) => boolean>(() => true);
+    const props = { question: question(), answered: false, submittedAnswer: "", onSubmit };
+    const { rerender } = render(<MasteryQuestionCard {...props} grade={null} />);
+    await user.click(screen.getByRole("button", { name: /Matching description/ }));
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    expect(screen.getByRole("textbox")).toBeDisabled();
+    rerender(<MasteryQuestionCard {...props} grade={null} rejectionKey="rejected-1" />);
+    await user.type(screen.getByRole("textbox"), "Unsent draft");
+    const partial = collectMasteryGrades([{ events: [event({ mastery_grade: { result: {
+      question_id: "group-1", question_type: "group", complete: false, remaining_question_ids: ["part-b"],
+      is_correct: null, results: [{ question_id: "part-a", is_correct: true, learner_answer: "A" }],
+    } } })] }]).get("group-1")!;
+    rerender(<MasteryQuestionCard {...props} grade={partial} />);
+    expect(screen.getByRole("textbox")).toHaveValue("Unsent draft");
+    expect(screen.getByRole("textbox")).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    expect(onSubmit.mock.calls[1][0].answers).toEqual([{ questionId: "part-b", text: "Unsent draft" }]);
+    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
+  });
+
+  it("actual message list leaves an incomplete group open and retains rejected remaining answers", async () => {
+    const user = userEvent.setup();
+    const onAnswer = vi.fn(() => true);
+    const posed = { id: 1, role: "assistant" as const, content: "", parentMessageId: null,
+      capability: "mastery_path", events: [event({ mastery_question: group })] };
+    const partial = event({ mastery_grade: { result: { question_id: "group-1", question_type: "group",
+      complete: false, remaining_question_ids: ["part-b"], is_correct: null,
+      results: [{ question_id: "part-a", is_correct: true, learner_answer: "A" }] } } });
+    const conversation = (events: StreamEvent[]) => <ChatMessageList messages={[posed,
+      { id: 2, role: "assistant", content: "", parentMessageId: 1, capability: "mastery_path", events }]}
+      isStreaming={false} onCopyAssistantMessage={async () => undefined}
+      onRegenerateMessage={() => undefined} onAnswerMasteryQuestion={onAnswer} />;
+    const { rerender } = render(conversation([partial]));
+    expect(screen.getByRole("textbox")).toBeEnabled();
+    await user.type(screen.getByRole("textbox"), "Keep this after rejection");
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    const rejection = { ...event({ mastery_answer_rejected: { question_id: "group-1" } }),
+      turn_id: "retry-turn", seq: 2 };
+    rerender(conversation([partial, rejection]));
+    expect(screen.getByRole("textbox")).toHaveValue("Keep this after rejection");
+    expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
   });
 
   it("retains both answers when delivery fails and allows a retry", async () => {

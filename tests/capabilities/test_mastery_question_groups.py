@@ -94,14 +94,139 @@ def test_independent_mixed_results_and_duplicate_credit(service):
 
 @pytest.mark.parametrize(
     "answers",
-    [{"q1": "alpha"}, {"q1": "alpha", "q2": ""}, {"q1": "alpha", "q2": "beta", "other": "x"}],
+    [{}, {"q1": "alpha", "q2": ""}, {"q1": "alpha", "q2": "beta", "other": "x"}],
 )
-def test_incomplete_or_unknown_answers_do_not_mutate(service, answers):
+def test_empty_or_unknown_answers_do_not_mutate(service, answers):
     service.register_question("p", group())
     before = service._store.load("p").model_dump()
     with pytest.raises(MasteryInteractionError):
         service.grade_interaction("p", answer="", question_id="g", answers=answers)
     assert service._store.load("p").model_dump() == before
+
+
+def test_partial_answers_are_retained_and_graded_once_after_reload(service):
+    service.register_question("p", group())
+    recorded = service.record_question_answer(
+        "p", "second only", interaction_id="g", answers={"q2": "beta"}
+    )
+    assert recorded.status == InteractionStatus.AWAITING_INPUT
+    assert recorded.answers == {"q2": "beta"}
+    reloaded = LearningService(LearningStore(service._store._root))
+    progress, partial, replayed = reloaded.grade_interaction("p", answer="", question_id="g")
+    assert not replayed
+    assert partial.status == InteractionStatus.AWAITING_INPUT
+    assert partial.result["complete"] is False
+    assert partial.result["remaining_question_ids"] == ["q1"]
+    assert partial.result["is_correct"] is None
+    assert [result["question_id"] for result in partial.result["results"]] == ["q2"]
+    assert [attempt.question_id for attempt in progress.quiz_attempts] == ["q2"]
+    assert progress.pending_question.question_id == "g"
+    replay, _, replayed = reloaded.grade_interaction(
+        "p", answer="", question_id="g", answers={"q2": "beta"}
+    )
+    assert replayed and len(replay.quiz_attempts) == 1
+    final, completed, replayed = reloaded.grade_interaction(
+        "p", answer="", question_id="g", answers={"q1": "alpha"}
+    )
+    assert not replayed
+    assert completed.status == InteractionStatus.GRADED
+    assert completed.answers == {"q1": "alpha", "q2": "beta"}
+    assert completed.result["complete"] is True
+    assert completed.result["remaining_question_ids"] == []
+    assert [r["question_id"] for r in completed.result["results"]] == ["q1", "q2"]
+    assert len(final.quiz_attempts) == len(final.learning_evidence) == 2
+    assert final.pending_question is None
+
+
+def test_changed_partial_reply_rolls_back_without_affecting_siblings(service):
+    service.register_question("p", group())
+    service.grade_interaction("p", answer="", question_id="g", answers={"q2": "wrong"})
+    before = service._store.load("p").model_dump()
+    with pytest.raises(MasteryInteractionError, match="committed answer"):
+        service.grade_interaction(
+            "p", answer="", question_id="g", answers={"q1": "alpha", "q2": "beta"}
+        )
+    assert service._store.load("p").model_dump() == before
+
+
+def test_partial_leaf_repair_updates_parent_without_inventing_sibling_reply(service):
+    service.register_question("p", group())
+    service.grade_interaction("p", answer="", question_id="g", answers={"q2": "wrong"})
+    service.repair_question(
+        "p", "q2", action="correct", expected_answer="wrong", reason="Verified key correction"
+    )
+    parent = service._store.get_interaction("p", "g")
+    assert parent.result["results"][0]["is_correct"] is True
+    assert parent.result["results"][0].get("result") != "incorrect"
+    assert parent.result["complete"] is False
+    assert parent.question.questions[0].question_id == "q1"
+    assert parent.question.questions[1].expected_answer == "wrong"
+    assert parent.answers == {"q2": "wrong"}
+    assert service._store.load("p").pending_question.questions[1].expected_answer == "wrong"
+    service.repair_question("p", "q2", action="void", reason="Uncertain key")
+    assert service._store.get_interaction("p", "g").result["results"][0]["is_correct"] is None
+    assert service._store.load("p").pending_question.question_id == "g"
+
+
+def test_third_answer_first_does_not_score_unanswered_questions(service):
+    progress = service._store.load("p")
+    progress.modules[0].knowledge_points.append(
+        KnowledgePoint(id="kp3", name="third", type=KnowledgeType.MEMORY, module_id="m")
+    )
+    service.save(progress)
+    pending = group()
+    pending.questions.append(leaf("q3", "kp3", "gamma"))
+    service.register_question("p", pending)
+    progress, interaction, _ = service.grade_interaction(
+        "p", answer="", question_id="g", answers={"q3": "gamma"}
+    )
+    assert [attempt.question_id for attempt in progress.quiz_attempts] == ["q3"]
+    assert interaction.result["remaining_question_ids"] == ["q1", "q2"]
+    assert interaction.status == InteractionStatus.AWAITING_INPUT
+
+
+def test_partial_group_cannot_reuse_a_leaf_from_another_group(service):
+    service.register_question("p", group())
+    service.grade_interaction("p", answer="", question_id="g", answers={"q2": "beta"})
+    replacement = group()
+    replacement.question_id = "new-group"
+    service.register_question(
+        "p", replacement, pending_action="replace", replace_question_id="g"
+    )
+    before = service._store.load("p").model_dump()
+    with pytest.raises(MasteryInteractionError, match="another interaction"):
+        service.grade_interaction(
+            "p", answer="", question_id="new-group", answers={"q2": "beta"}
+        )
+    assert service._store.load("p").model_dump() == before
+
+
+
+
+@pytest.mark.asyncio
+async def test_partial_grade_tool_and_status_preserve_child_identity(service, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    synced = []
+
+    async def sync(**kwargs):
+        synced.append(kwargs["pending"].question_id)
+
+    monkeypatch.setattr(tools, "_sync_mastery_attempt_to_question_bank", sync)
+    service.register_question("p", group())
+    graded = await tools.MasteryGradeTool().execute(
+        _mastery_path_id="p", question_id="g", answers={"q2": "beta"}
+    )
+    assert graded.success
+    assert graded.metadata["mastery_grade"]["complete"] is False
+    assert graded.metadata["mastery_grade"]["remaining_question_ids"] == ["q1"]
+    assert synced == ["q2"]
+    status = await tools.MasteryStatusTool().execute(_mastery_path_id="p")
+    pending = status.metadata["mastery_status"]["pending_interaction"]
+    assert pending["answers"] == {"q2": "beta"}
+    assert pending["remaining_question_ids"] == ["q1"]
+    assert "PRIVATE" not in json.dumps(pending)
 
 
 def test_explicit_replacement_retains_abandoned_history(service):

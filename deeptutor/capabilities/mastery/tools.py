@@ -798,7 +798,22 @@ class MasteryStatusTool(BaseTool):
                 "question_id": interaction.interaction_id,
                 "status": interaction.status.value,
             }
-            if interaction.status == InteractionStatus.ANSWERED:
+            if interaction.question.questions:
+                graded_ids = {
+                    result["question_id"] for result in interaction.result.get("results", [])
+                }
+                pending_interaction["answers"] = dict(interaction.answers)
+                pending_interaction["remaining_question_ids"] = [
+                    q.question_id for q in interaction.question.questions
+                    if q.question_id not in graded_ids
+                ]
+                pending_interaction["instruction"] = (
+                    "Keep committed child replies verbatim. Grade only actual replies; "
+                    "unanswered children remain open and earn no score. Continue at the requested "
+                    "pace; explain reported gaps, but never infer confusion from an unanswered "
+                    "item or invent a missing reply."
+                )
+            elif interaction.status == InteractionStatus.ANSWERED:
                 # The answer is learner-authored state, not the hidden answer
                 # key. Returning it lets a restart grade rather than ask twice.
                 pending_interaction["learner_answer"] = interaction.user_answer
@@ -1330,7 +1345,7 @@ class MasteryGradeTool(BaseTool):
                     name="answers",
                     type="object",
                     required=False,
-                    description="For a group only: exact child question_id to learner answer strings. Use committed replies verbatim; never one concatenated answer.",
+                    description="For a group only: one or more exact child question_id to actual learner answer strings. Partial replies are saved and graded independently; unanswered children stay open. Use committed replies verbatim; never invent missing replies or concatenate answers.",
                 ),
                 ToolParameter(
                     name="question_id",
@@ -1568,9 +1583,9 @@ class MasteryGradeTool(BaseTool):
             return ToolResult(content=str(exc), success=False)
         group_result = dict(interaction.result)
         group_result["results"] = [dict(result) for result in group_result["results"]]
-        for leaf, result in zip(
-            interaction.question.questions, group_result["results"], strict=True
-        ):
+        leaves = {leaf.question_id: leaf for leaf in interaction.question.questions}
+        for result in group_result["results"]:
+            leaf = leaves[result["question_id"]]
             kp, _, _ = find_knowledge_point(progress, leaf.knowledge_point_id)
             evidence = next(
                 (
@@ -1612,11 +1627,13 @@ class MasteryGradeTool(BaseTool):
                 "question_id": pending.question_id,
                 "question_type": "group",
                 "is_correct": group_result["is_correct"],
+                "complete": group_result.get("complete", True),
+                "remaining_question_ids": group_result.get("remaining_question_ids", []),
                 "replayed": replayed,
                 "path_revision": progress.version,
                 "result": group_result,
                 "next": next_objective(progress).to_dict(),
-                "instruction": "Give concise, explanatory feedback per question. Mixed results remain separate; the parent grants no extra mastery. Keep qualitative assessment gates and adapt subsequent teaching to the learner's needs.",
+                "instruction": "Give explanatory feedback only for answered questions. Preserve independent results; the parent grants no extra mastery. If complete=false, unanswered children remain open. Continue at the requested pace and explain reported gaps; do not infer confusion from an unanswered item, invent replies or regrade committed answers. Keep qualitative gates and adapt teaching to the learner's needs.",
             },
             meta_key="mastery_grade",
         )

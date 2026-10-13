@@ -91,7 +91,7 @@ class MasteryCardAnswer(BaseModel):
 
     question_id: str = Field(min_length=1)
     text: str = Field(min_length=1)
-    answers: dict[str, StrictStr] | None = Field(default=None, min_length=2, max_length=4)
+    answers: dict[str, StrictStr] | None = Field(default=None, min_length=1, max_length=4)
 
     @field_validator("answers")
     @classmethod

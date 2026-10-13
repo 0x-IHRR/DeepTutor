@@ -367,12 +367,14 @@ function GroupedMasteryQuestionCard({
   const [answers, setAnswers] = useState<Record<string, { text: string; available: boolean }>>({});
   const [skipping, setSkipping] = useState(false);
   const [skipFailed, setSkipFailed] = useState(false);
-  const { sending, failed, submit } = useCardSubmission(onSubmit, rejectionKey);
   const questions = question.questions ?? [];
-  const settled = answered || Boolean(grade) || skipped === true;
+  const acknowledgementKey = grade ? JSON.stringify((grade.results ?? []).map((part) => part.questionId)) : undefined;
+  const { sending, failed, submit } = useCardSubmission(onSubmit, rejectionKey, acknowledgementKey);
+  const settled = answered || (Boolean(grade) && grade?.complete !== false) || skipped === true;
   const locked = settled || sending || skipping;
-  const ready = questions.length >= 2 && questions.every((part) =>
-    Boolean(answers[part.questionId]?.text) && answers[part.questionId]?.available);
+  const remaining = questions.filter((part) => !grade?.results?.some((result) => result.questionId === part.questionId));
+  const drafted = remaining.filter((part) => Boolean(answers[part.questionId]?.text));
+  const ready = questions.length >= 2 && drafted.length > 0 && drafted.every((part) => answers[part.questionId]?.available);
 
   const updateAnswer = useCallback((questionId: string, text: string, available: boolean) => {
     setAnswers((current) => current[questionId]?.text === text && current[questionId]?.available === available
@@ -381,8 +383,8 @@ function GroupedMasteryQuestionCard({
 
   const handleSubmit = () => {
     if (locked || !ready) return;
-    const parts = questions.map((part) => ({ questionId: part.questionId, text: answers[part.questionId].text }));
-    void submit({ text: parts.map((part, index) => `${index + 1}. ${part.text}`).join("\n"), answers: parts });
+    const parts = drafted.map((part) => ({ questionId: part.questionId, text: answers[part.questionId].text }));
+    void submit({ text: parts.map((part) => `${questions.findIndex((question) => question.questionId === part.questionId) + 1}. ${part.text}`).join("\n"), answers: parts });
   };
 
   const handleSkip = async () => {
@@ -405,7 +407,7 @@ function GroupedMasteryQuestionCard({
     {questions.map((part) => {
       const partGrade = grade?.results?.find((result) => result.questionId === part.questionId) ?? null;
       return <SingleMasteryQuestionCard key={part.questionId} question={part} grade={partGrade}
-        answered={settled} skipped={skipped} submittedAnswer={partGrade?.learnerAnswer ?? ""}
+        answered={settled || Boolean(partGrade)} skipped={skipped} submittedAnswer={partGrade?.learnerAnswer ?? ""}
         onSubmit={onSubmit} onChallenge={onChallenge} groupInput={{ locked, onChange: updateAnswer }} />;
     })}
     {!settled ? <div className="mt-3 flex items-center justify-between gap-3">
