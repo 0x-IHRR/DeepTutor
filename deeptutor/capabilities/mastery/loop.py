@@ -395,8 +395,10 @@ class MasteryLoopCapability:
         if not state.get("card_posted") and _looks_like_multipart_assessment(final_text):
             return (
                 "That reply presented a numbered assessment as unregistered prose. "
-                "For memory/procedure practice, call mastery_quiz with a questions group "
-                "so each answer has its own stored contract and result. If an older question "
+                "For practice across all objective types, call mastery_quiz with a questions group "
+                "so each answer has its own stored contract and result. CONCEPT / DESIGN cards "
+                "do not open their qualitative gate; use mastery_assess for the learner's own "
+                "explanation when assessing that gate. If an older question "
                 "is pending and you want to show it again, call mastery_quiz with "
                 "pending_action='resume' and its exact parent resume_question_id, without "
                 "new questions or answer keys. Preserve it unless the learner explicitly requested replacement; "

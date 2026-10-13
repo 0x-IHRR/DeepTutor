@@ -906,16 +906,18 @@ class MasteryQuizTool(BaseTool):
         definition = ToolDefinition(
             name="mastery_quiz",
             description=(
-                "Pose a question for a MEMORY or PROCEDURE objective. This one "
-                "call registers the expected answer with the engine (so grading "
-                "is deterministic and you never re-state the answer later) AND "
+                "Pose practice cards for all objective types: MEMORY, PROCEDURE, "
+                "CONCEPT, or DESIGN, singly or as a questions group. This one "
+                "call registers the expected answer with the engine for exact or "
+                "semantic grading (you never re-state the answer later) AND "
                 "puts the question in front of the learner on its own answer "
                 "card — do not call ask_user for it. THE TURN ENDS HERE: unlike "
                 "ask_user, this does not wait for a reply inside your turn, so "
                 "call it last and plan nothing after it. Their answer arrives as "
                 "the next message and you grade it on the next turn with "
-                "mastery_grade. For CONCEPT / DESIGN objectives use "
-                "mastery_assess instead."
+                "mastery_grade. CONCEPT / DESIGN cards are practice only: their "
+                "qualitative gate still requires the learner's own explanation "
+                "assessed through mastery_assess; quiz correctness cannot open it."
             ),
             parameters=[
                 ToolParameter(
@@ -1262,7 +1264,14 @@ class MasteryQuizTool(BaseTool):
                 "button. That list was removed from the stem. Pass the ask in "
                 "'question' and the choices only in 'options'."
             )
-        if not pending.questions and kp is not None and kp.type in QUALITATIVE_TYPES:
+        qualitative_practice = any(
+            point is not None and point.type in QUALITATIVE_TYPES
+            for point, _, _ in (
+                find_knowledge_point(progress, question.knowledge_point_id)
+                for question in pending.questions or [pending]
+            )
+        )
+        if qualitative_practice:
             # The mirror of ``record_qualitative_for_path``, which refuses
             # outright when mastery_assess is aimed at a quantitative
             # objective. This direction stays allowed — a question is a fair
@@ -1271,9 +1280,9 @@ class MasteryQuizTool(BaseTool):
             # gate never reads it, and a tutor that assumes otherwise poses
             # questions forever at an objective they cannot open.
             notice += (
-                " This objective is gated qualitatively: grading this answer "
-                "will not open it, however right the answer is. Use the "
-                "question to probe, then have the learner explain the idea in "
+                " The CONCEPT / DESIGN objectives in this practice are gated qualitatively: "
+                "grading their answers will not open their qualitative gate, however right "
+                "the answers are. Use the cards to probe, then have the learner explain the idea in "
                 "their own words and record that with mastery_assess."
             )
 

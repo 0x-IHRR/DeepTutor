@@ -75,3 +75,14 @@ Loop: raw-message injection for those tools and `_grade_seed` only. Runtime:
 cards, receipt/rejection projection, bank badges and six partial translations.
 Profile, intake, memory, broad teaching guidance and delivery recovery edits
 remain in their separate contributions.
+
+## Practice-card interface follow-up
+
+The quiz schema and grouped finish nudge now accurately allow practice cards for
+all objective types. Both single and grouped CONCEPT / DESIGN cards explicitly
+retain the separate qualitative gate. No credit policy was changed. A new
+three-case regression first failed on the obsolete descriptions/missing grouped
+notice, while already proving six correct concept/design attempts did not open
+either gate. After the wording fix: root concept-contract/tools suites 83 passed;
+native concept-contract/runtime/capability suites 101 passed; scoped Ruff and
+diff checks passed.
