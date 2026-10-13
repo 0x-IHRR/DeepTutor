@@ -846,7 +846,7 @@ class MasteryNoteExplainedTool(BaseTool):
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="mastery_note_explained",
-            description="After explaining an objective at the requested level, record what was taught. This does not assess, grant mastery or schedule a review. Respect explanation-only requests; a quiz is optional until the learner wants practice.",
+            description="After explaining a supported slice of an objective, record only that partial coverage. Current source evidence is revalidated; this does not prove full-objective coverage, assess, grant mastery or schedule a review. Respect explanation-only requests; a quiz is optional until the learner wants practice.",
             parameters=[
                 ToolParameter(
                     name="knowledge_point_id",
@@ -879,22 +879,29 @@ class MasteryNoteExplainedTool(BaseTool):
         def note(tx):
             import time
 
+            from deeptutor.learning.lesson_evidence import validate_evidence
+
             if find_knowledge_point(tx.progress, kp_id)[0] is None:
                 raise ValueError("Unknown objective; refresh mastery_status.")
+            validate_evidence(
+                service.store, tx.progress, kp_id, tx.progress.lesson_evidence.get(kp_id, {}),
+                allow_partial=True,
+            )
             tx.progress.explained_objectives[kp_id] = {
                 "summary": summary,
+                "coverage": "partial",
                 "timestamp": time.time(),
                 "session_id": _resolve_session_id(kwargs),
                 "turn_id": _resolve_turn_id(kwargs),
             }
-            tx.emit("objective.explained", {"knowledge_point_id": kp_id, "summary": summary})
+            tx.emit("objective.explained", {"knowledge_point_id": kp_id, "summary": summary, "coverage": "partial"})
 
         try:
             await asyncio.to_thread(service.store.mutate, path_id, note)
         except (ValueError, FileNotFoundError) as exc:
             return ToolResult(content=str(exc), success=False)
         return _json_result(
-            {"knowledge_point_id": kp_id, "stage": "explained", "mastery_credit": False},
+            {"knowledge_point_id": kp_id, "stage": "explained", "coverage": "partial", "mastery_credit": False},
             meta_key="mastery_note_explained",
         )
 
