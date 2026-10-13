@@ -13,6 +13,7 @@ import json
 import math
 from pathlib import Path
 import time
+import unicodedata
 from typing import Any
 
 from deeptutor.learning.policy import find_knowledge_point
@@ -33,6 +34,46 @@ MAX_LESSON_PAGES = 6
 
 class LessonUnavailable(ValueError):
     """Stop source-grounded tutoring, rather than silently fall back to guesses."""
+
+
+def _selection_excerpt(text: str, chosen: dict[str, Any]) -> str:
+    """Selection uses source IDs, not model-authored quotations as evidence."""
+    if "quote" not in chosen:
+        # A preview of the original, not the model's claimed supporting passage.
+        # The complete candidate text and original pixels still go to inspection.
+        return text[:300]
+    quote = chosen["quote"]
+    error = "The model's source quotation does not match the retrieved text."
+    if not isinstance(quote, str) or not 8 <= len(quote) <= 300:
+        raise LessonUnavailable(error)
+    if quote in text:
+        return quote
+
+    # Legacy responses may change only Unicode composition or whitespace.
+    # Keep offsets into the original so the stored excerpt is never rewritten.
+    clusters: list[tuple[int, str]] = []
+    for offset, char in enumerate(text):
+        if unicodedata.combining(char) and clusters:
+            start, value = clusters[-1]
+            clusters[-1] = (start, value + char)
+        else:
+            clusters.append((offset, char))
+    normalized, spans = [], []
+    for start, value in clusters:
+        for char in unicodedata.normalize("NFD", value):
+            char = " " if char.isspace() else char
+            if char == " " and normalized and normalized[-1] == " ":
+                spans[-1] = (spans[-1][0], start + len(value))
+            else:
+                normalized.append(char)
+                spans.append((start, start + len(value)))
+    target = " ".join(unicodedata.normalize("NFD", quote).split())
+    offset = "".join(normalized).find(target) if target else -1
+    if offset >= 0:
+        original = text[spans[offset][0]:spans[offset + len(target) - 1][1]]
+        if " ".join(unicodedata.normalize("NFD", original).split()) == target:
+            return original
+    raise LessonUnavailable(error)
 
 
 def _page_identity(candidate: dict[str, Any]) -> tuple[str, str, int]:
@@ -511,11 +552,12 @@ async def prepare_lesson(store: Any, path_id: str, kp_id: str, config: Any, stre
             'or expand an introductory comparison into an exhaustive mechanistic proof. '
             'This is preparation for teaching, '
             'not a claim of learner mastery. '
-            'Return JSON {"sufficient":true|false,"selected":[{"id":"c0","quote":"exact substring",'
+            'Return JSON {"sufficient":true|false,"selected":[{"id":"c0",'
             '"reason":"what it supports","neighbor":0|1|-1}],"missing":"..."}. '
             f'Select the smallest sufficient set, at most {MAX_LESSON_PAGES} distinct pages. '
             'Prefer 1-3 pages; use more only when separate parts of the objective require them. '
-            'Use only supplied IDs, quotes 8-300 characters copied exactly. '
+            'Use only supplied IDs; do not return quotes. The server retains original source text '
+            'and a deterministic excerpt, and inspects the original pixels before accepting evidence. '
             'Use one selected entry per physical page, combining its supported concepts in the reason; '
             'do not repeat the same page once for every fact it supports. '
             'Use a neighbor only when an adjacent figure/table is explicitly referenced. '
@@ -542,9 +584,7 @@ async def prepare_lesson(store: Any, path_id: str, kp_id: str, config: Any, stre
             candidate = by_id.get(chosen.get("id")) if isinstance(chosen, dict) else None
             if candidate is None:
                 raise LessonUnavailable("The model selected a source ID that was not retrieved.")
-            quote = str(chosen.get("quote") or "")
-            if not 8 <= len(quote) <= 300 or quote not in candidate["text"]:
-                raise LessonUnavailable("The model's source quotation does not match the retrieved text.")
+            quote = _selection_excerpt(candidate["text"], chosen)
             ref = SourceRef.model_validate(candidate["ref"])
             resolve_source(ref)
             page_id = (ref.kb_ref, ref.document_key, ref.page_index)

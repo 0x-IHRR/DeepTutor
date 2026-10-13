@@ -1032,6 +1032,9 @@ class MasteryQuizTool(BaseTool):
             ],
         )
         leaf_parameters = {p.name: p.to_schema() for p in definition.parameters}
+        from deeptutor.learning.visual_practice import visual_request_schema
+
+        leaf_parameters["visual"].update(visual_request_schema())
         for parameter in definition.parameters:
             if parameter.name in {"knowledge_point_id", "question", "expected_answer"}:
                 parameter.required = False
@@ -1084,6 +1087,9 @@ class MasteryQuizTool(BaseTool):
                 ),
             ]
         )
+        schema = definition.to_openai_schema()["function"]["parameters"]
+        schema["properties"]["visual"].update(visual_request_schema())
+        definition.raw_parameters = schema
         return definition
 
     async def execute(self, **kwargs: Any) -> ToolResult:
@@ -1153,6 +1159,16 @@ class MasteryQuizTool(BaseTool):
             }
             leaves = []
             echoed_options = False
+            # Reject malformed assistance anywhere in the batch before the
+            # first leaf performs source/image inspection.
+            from deeptutor.learning.visual_practice import visual_hint_count
+
+            try:
+                for raw in raw_questions:
+                    if isinstance(raw, dict) and isinstance(raw.get("visual"), dict):
+                        visual_hint_count(raw["visual"].get("hints_used"))
+            except ValueError as exc:
+                return ToolResult(content=str(exc), success=False)
             for raw in raw_questions:
                 if (
                     not isinstance(raw, dict)

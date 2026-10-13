@@ -46,7 +46,7 @@ class ToolParameter:
         """Convert to JSON Schema property dict."""
         schema: dict[str, Any] = {"type": self.type, "description": self.description}
         if self.enum:
-            schema["enum"] = self.enum
+            schema["enum"] = list(self.enum)
         if self.type == "array":
             schema["items"] = self.items if self.items is not None else {"type": "string"}
         return schema

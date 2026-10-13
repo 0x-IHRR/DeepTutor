@@ -22,6 +22,49 @@ def _answer_in_quote(answer: str, quote: str) -> bool:
     return needle in quote
 
 
+def visual_hint_count(value: Any) -> int:
+    """Normalize explicit assistance before resolving any source or image."""
+    if value is None:
+        return 0
+    if type(value) is int and value >= 0:
+        return value
+    if isinstance(value, list) and value and all(
+        isinstance(hint, str) and hint.strip() for hint in value
+    ):
+        return len(value)
+    raise ValueError(
+        "visual.hints_used must be a nonnegative integer or a nonempty list of "
+        "nonempty hint descriptions; omit it or use null when no hints were used."
+    )
+
+
+def visual_request_schema() -> dict[str, Any]:
+    """The same typed visual contract for single cards and grouped leaves."""
+    return {
+        "type": "object",
+        "properties": {
+            "task": {"type": "string", "enum": ["identification", "relationship", "table_graph", "comparison"]},
+            "sources": {"type": "array", "minItems": 1, "maxItems": 2, "items": {
+                "type": "object", "properties": {
+                    "kb_name": {"type": "string"}, "asset_id": {"type": "string"},
+                    "source_path": {"type": "string"}, "page": {"type": "integer", "minimum": 1},
+                    "source_hash": {"type": "string"}, "figure": {"type": "string"},
+                    "region": {"type": "array", "minItems": 4, "maxItems": 4,
+                               "items": {"type": "number", "minimum": 0, "maximum": 1}},
+                }, "required": ["kb_name"],
+            }},
+            "reference_quote": {"type": "string"},
+            "accepted_answers": {"type": "array", "maxItems": 12, "items": {"type": "string"}},
+            "key_status": {"type": "string", "enum": ["verified", "unverified"]},
+            "answer_cues": {"type": "string", "enum": ["none", "visible", "unverified"]},
+            "hints_used": {"description": "Assistance count, or descriptions of hints already given. Descriptions count as assistance, not independent recall.",
+                           "anyOf": [{"type": "integer", "minimum": 0},
+                                     {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+                                     {"type": "null"}]},
+        }, "required": ["sources"],
+    }
+
+
 def prepare_visual(
     request: dict[str, Any],
     *,
@@ -30,6 +73,7 @@ def prepare_visual(
     attached_kbs: list[str] | None = None,
     inspected_image_hashes: list[str] | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
+    hints_used = visual_hint_count(request.get("hints_used"))
     from deeptutor.multi_user.knowledge_access import resolve_for_rag
     from deeptutor.services.rag.kb_paths import resolve_kb_dir
     from deeptutor.services.rag.source_visuals import retrieve_visual
@@ -141,7 +185,7 @@ def prepare_visual(
         "pixels_inspected": inspected,
         "reference_quote": quote,
         "reference_answer": correct_body,
-        "hints_used": max(int(request.get("hints_used") or 0), int(cues != "none")),
+        "hints_used": max(hints_used, int(cues != "none")),
     }, aliases
 
 
