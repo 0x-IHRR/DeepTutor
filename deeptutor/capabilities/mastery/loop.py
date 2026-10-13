@@ -427,6 +427,11 @@ class MasteryLoopCapability:
         state = context.extension("mastery")
         notice = ""
         if state.get("profile_write_pending"):
+            if not final_text.strip() and not state.get("card_posted"):
+                # This hook also runs after every tool batch. An optional
+                # storage notice cannot end work still in progress; append it
+                # only to a real final answer or an accepted question card.
+                return None
             # Optional memory failure must not deadlock otherwise valid tutoring.
             # The native status corrects any unsupported persistence promise;
             # it does not classify or discard the learner-facing explanation.

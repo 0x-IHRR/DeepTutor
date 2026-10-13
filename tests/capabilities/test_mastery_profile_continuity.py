@@ -122,3 +122,27 @@ def test_unsaved_notice_preserves_card_finish_postcondition():
     visible = MasteryLoopCapability().final_text_override(context, "")
     assert "not saved" in visible
     assert context.extension("mastery")["card_posted"] is False
+
+
+@pytest.mark.parametrize("quiz_requested", [False, True])
+def test_unsaved_profile_notice_does_not_finish_an_active_tool_round(quiz_requested):
+    from deeptutor.capabilities.mastery.loop import MasteryLoopCapability
+    from deeptutor.core.context import UnifiedContext
+
+    context = UnifiedContext(metadata={"mastery_mode": True})
+    capability = MasteryLoopCapability()
+    state = context.extension("mastery")
+    state.update(profile_write_pending=True, quiz_requested=quiz_requested)
+    assert capability.final_text_override(context, "") is None
+    assert state["profile_write_pending"] is True
+    assert "profile_receipt" not in state
+    if quiz_requested:
+        state["profile_repair_requested"] = True
+        assert "no question card" in capability.finish_instruction(context, "Done.")
+        state["card_posted"] = True
+        final = capability.final_text_override(context, "")
+    else:
+        final = capability.final_text_override(context, "Useful explanation.")
+        assert final.endswith("Useful explanation.")
+    assert "was not saved" in final
+    assert state["profile_receipt"] == {"status": "not_saved"}
