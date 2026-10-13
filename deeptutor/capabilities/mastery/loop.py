@@ -60,7 +60,7 @@ _MULTIPART_INTENT_RE = re.compile(
     re.IGNORECASE,
 )
 _NUMBERED_QUESTION_RE = re.compile(
-    r"^\s*(?:\*\*)?\d{1,2}[.)、](?:\*\*)?\s+[^\n]*[?？]", re.MULTILINE
+    r"^\s*(?:#{1,6}\s+)?(?:\*\*)?\d{1,2}[.)、](?:\*\*)?\s+", re.MULTILINE
 )
 # A reply that announces a question without posing one. Matched against the
 # tail of the reply only, where an announcement lands, so ordinary discussion
@@ -161,9 +161,18 @@ def _looks_like_plain_choice_quiz(text: str) -> bool:
 
 def _looks_like_multipart_assessment(text: str) -> bool:
     prose = _QUOTED_CARD_TEXT_RE.sub(" ", text)
-    return (
-        bool(_MULTIPART_INTENT_RE.search(prose)) and len(_NUMBERED_QUESTION_RE.findall(prose)) >= 2
-    )
+    if not _MULTIPART_INTENT_RE.search(prose):
+        return False
+    # Markdown frequently puts the title on the numbered line and the actual
+    # question in the following paragraph. Count question-bearing blocks, not
+    # only same-line stems; quoted/code examples were removed above.
+    starts = list(_NUMBERED_QUESTION_RE.finditer(prose))
+    questions = 0
+    for index, start in enumerate(starts):
+        end = starts[index + 1].start() if index + 1 < len(starts) else len(prose)
+        if re.search(r"[?？]", prose[start.end():end]):
+            questions += 1
+    return questions >= 2
 
 
 def _turn_has_graded(context: UnifiedContext) -> bool:
@@ -385,10 +394,12 @@ class MasteryLoopCapability:
             )
         if not state.get("card_posted") and _looks_like_multipart_assessment(final_text):
             return (
-                "That reply presented a new numbered assessment as unregistered prose. "
+                "That reply presented a numbered assessment as unregistered prose. "
                 "For memory/procedure practice, call mastery_quiz with a questions group "
                 "so each answer has its own stored contract and result. If an older question "
-                "is pending, preserve it unless the learner explicitly requested replacement; "
+                "is pending and you want to show it again, call mastery_quiz with "
+                "pending_action='resume' and its exact parent resume_question_id, without "
+                "new questions or answer keys. Preserve it unless the learner explicitly requested replacement; "
                 "then use its current question ID and a literal replacement_request quote. "
                 "Do not concatenate expected answers or claim that a prose list is a card. "
                 "If this is teaching rather than assessment, explain directly without "

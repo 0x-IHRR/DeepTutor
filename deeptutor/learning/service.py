@@ -654,10 +654,11 @@ class LearningService:
     def register_question(
         self,
         book_id: str,
-        pending: PendingQuestion,
+        pending: PendingQuestion | None,
         *,
         pending_action: str = "retain",
         replace_question_id: str = "",
+        resume_question_id: str = "",
         session_id: str = "",
         turn_id: str = "",
     ) -> tuple[LearningProgress, MasteryInteraction, bool]:
@@ -667,8 +668,13 @@ class LearningService:
         existing interaction instead of overwriting its expected answer.
         """
 
-        if pending_action not in {"retain", "replace"}:
-            raise MasteryInteractionError("pending_action must be retain or replace")
+        if pending_action not in {"retain", "replace", "resume"}:
+            raise MasteryInteractionError("pending_action must be retain, replace or resume")
+        if pending_action == "resume":
+            if pending is not None or replace_question_id or not resume_question_id:
+                raise MasteryInteractionError("Resume needs only the exact pending parent question_id")
+        elif pending is None or resume_question_id:
+            raise MasteryInteractionError("A new question contract cannot include resume_question_id")
 
         def register(tx):
             active = tx.active_interaction()
@@ -691,6 +697,28 @@ class LearningService:
                         active = persisted
                     else:
                         tx.put_interaction(active)
+            if pending_action == "resume":
+                if active is None or active.interaction_id != resume_question_id:
+                    raise StaleInteractionError(
+                        resume_question_id, active.interaction_id if active else ""
+                    )
+                if active.status not in {
+                    InteractionStatus.REGISTERED, InteractionStatus.AWAITING_INPUT,
+                }:
+                    raise MasteryInteractionError("This question is no longer awaiting input; refresh mastery_status")
+
+                graded_ids = {
+                    result["question_id"] for result in (active.result or {}).get("results", [])
+                }
+                if set(active.answers) - graded_ids:
+                    raise MasteryInteractionError(
+                        "Grade the committed answers before re-presenting the remaining card"
+                    )
+                known_ids = {kp.id for module in tx.progress.modules for kp in module.knowledge_points}
+                for question in active.question.questions or [active.question]:
+                    if question.question_id not in graded_ids and question.knowledge_point_id not in known_ids:
+                        raise MasteryInteractionError("The pending objective changed; refresh mastery_status")
+                return active, False
             if active is not None and pending_action == "retain":
                 if bool(pending.questions) != bool(active.question.questions):
                     raise MasteryInteractionError(

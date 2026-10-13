@@ -113,6 +113,45 @@ describe("grouped mastery assessment", () => {
       answers: [{ questionId: "part-b", text: "Remaining answer" }] });
   });
 
+  it("restores a resumed partial group from the receipt in its own message without older history", async () => {
+    const user = userEvent.setup();
+    const onAnswer = vi.fn(() => true);
+    const resumedEvent = event({
+      mastery_quiz: { status: "resumed", question_id: "group-1" },
+      mastery_question: {
+        ...group,
+        questions: group.questions.map((part) => ({ ...part, expected_answer: "PRIVATE_QUESTION_KEY" })),
+      },
+      mastery_grade: { question_id: "group-1", complete: false, replayed: true,
+        remaining_question_ids: ["part-b"], result: {
+          question_id: "group-1", question_type: "group", is_correct: null, complete: false,
+          remaining_question_ids: ["part-b"], results: [
+            { question_id: "part-a", is_correct: true, learner_answer: "A", correct_label: "A",
+              explanation: "First part already confirmed.", expected_answer: "PRIVATE_GRADE_KEY" },
+          ],
+        } },
+    });
+    // The re-presentation is the only loaded message: the original question
+    // and earlier grade are intentionally absent from this history page.
+    const messages = [{ id: 20, role: "assistant" as const, content: "", parentMessageId: null,
+      capability: "mastery_path", events: [resumedEvent] }];
+    const restored = collectMasteryGrades(messages);
+    expect(restored.get("part-a")?.learnerAnswer).toBe("A");
+    expect(restored.get("group-1")?.complete).toBe(false);
+    expect(JSON.stringify([...restored.values()])).not.toContain("PRIVATE_");
+    render(<ChatMessageList messages={messages} isStreaming={false}
+      onCopyAssistantMessage={async () => undefined} onRegenerateMessage={() => undefined}
+      onAnswerMasteryQuestion={onAnswer} />);
+    expect(screen.getByRole("button", { name: /Matching description/ })).toBeDisabled();
+    expect(screen.getByText("First part already confirmed.")).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toBeEnabled();
+    expect(document.body.textContent).not.toContain("PRIVATE_");
+    await user.type(screen.getByRole("textbox"), "Answer after resuming");
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    expect(onAnswer).toHaveBeenCalledExactlyOnceWith({ questionId: "group-1", text: "2. Answer after resuming",
+      answers: [{ questionId: "part-b", text: "Answer after resuming" }] });
+  });
+
   it("releases the sending latch on partial acknowledgement and preserves unsent edits", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn<(payload: UserReplyPayload) => boolean>(() => true);

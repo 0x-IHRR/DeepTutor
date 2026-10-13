@@ -1027,7 +1027,9 @@ class MasteryQuizTool(BaseTool):
         definition.description += (
             " For several separately graded questions use questions (two to four single-question "
             "objects) in ONE call, not prose or repeated calls. One parent ends the turn. "
-            "A pending item is retained unless the learner explicitly requests replacement."
+            "A pending item is retained unless the learner explicitly requests replacement. "
+            "To show the CURRENT pending card again, use pending_action='resume' and "
+            "its exact parent resume_question_id only; do not regenerate questions or keys."
         )
         definition.parameters.extend(
             [
@@ -1048,8 +1050,14 @@ class MasteryQuizTool(BaseTool):
                     name="pending_action",
                     type="string",
                     required=False,
-                    enum=["retain", "replace"],
-                    description="Retain existing pending question by default; replace only on an explicit learner request.",
+                    enum=["retain", "replace", "resume"],
+                    description="Retain by default; replace only on an explicit learner request; resume re-presents the exact existing card without a new contract.",
+                ),
+                ToolParameter(
+                    name="resume_question_id",
+                    type="string",
+                    required=False,
+                    description="Exact CURRENT pending parent question_id from mastery_status, only with pending_action='resume'. Omit all new-question and replacement parameters.",
                 ),
                 ToolParameter(
                     name="replace_question_id",
@@ -1079,6 +1087,22 @@ class MasteryQuizTool(BaseTool):
         if progress is None:
             return _no_built_path_result("mastery_quiz")
         pending_action = kwargs.get("pending_action", "retain")
+        resume_id = kwargs.get("resume_question_id")
+        if pending_action == "resume":
+            contract_fields = {
+                "knowledge_point_id", "question", "expected_answer", "question_type", "options",
+                "explanation", "difficulty", "visual", "questions", "replace_question_id", "replacement_request",
+            }
+            if (
+                not isinstance(resume_id, str) or not resume_id.strip()
+                or any(kwargs.get(field) is not None for field in contract_fields)
+            ):
+                return ToolResult(
+                    content="Resume needs only pending_action='resume' and the exact pending parent resume_question_id; omit new-question and replacement arguments.",
+                    success=False,
+                )
+        elif resume_id is not None:
+            return ToolResult(content="resume_question_id requires pending_action='resume'.", success=False)
         if pending_action == "replace":
             request = kwargs.get("replacement_request")
             learner_message = kwargs.get("_learner_message")
@@ -1093,7 +1117,9 @@ class MasteryQuizTool(BaseTool):
                     success=False,
                 )
         raw_questions = kwargs.get("questions")
-        if raw_questions is None:
+        if pending_action == "resume":
+            pending, echoed_options = None, False
+        elif raw_questions is None:
             built = await self._build_question(kwargs, progress)
             if isinstance(built, ToolResult):
                 return built
@@ -1154,16 +1180,18 @@ class MasteryQuizTool(BaseTool):
                 pending,
                 pending_action=pending_action,
                 replace_question_id=str(kwargs.get("replace_question_id") or ""),
+                resume_question_id=str(resume_id or ""),
                 session_id=_resolve_session_id(kwargs),
                 turn_id=_resolve_turn_id(kwargs),
             )
         except MasteryInteractionError as exc:
             return ToolResult(content=str(exc), success=False)
         pending = interaction.question
+        kp, _, _ = find_knowledge_point(progress, pending.knowledge_point_id)
         public_question = public_pending_question(pending)
         card = build_question_card(
             pending,
-            objective_name=kp.name if not pending.questions else "",
+            objective_name=kp.name if kp is not None and not pending.questions else "",
             attempt=attempt_number(progress, pending.knowledge_point_id),
         )
         if pending.questions:
@@ -1225,7 +1253,7 @@ class MasteryQuizTool(BaseTool):
                 "button. That list was removed from the stem. Pass the ask in "
                 "'question' and the choices only in 'options'."
             )
-        if not pending.questions and kp.type in QUALITATIVE_TYPES:
+        if not pending.questions and kp is not None and kp.type in QUALITATIVE_TYPES:
             # The mirror of ``record_qualitative_for_path``, which refuses
             # outright when mastery_assess is aimed at a quantitative
             # objective. This direction stays allowed — a question is a fair
@@ -1240,10 +1268,34 @@ class MasteryQuizTool(BaseTool):
                 "their own words and record that with mastery_assess."
             )
 
-        return ToolResult(
-            content=notice,
-            metadata={"mastery_quiz": payload, QUESTION_CARD_KEY: card},
-        )
+        metadata = {"mastery_quiz": payload, QUESTION_CARD_KEY: card}
+        if pending_action == "resume" and pending.questions and interaction.result.get("results"):
+            # The original grade message may be outside the current history
+            # page. Reuse its public cumulative receipt to restore leaf locks;
+            # this is a replay, never another grading call or mastery credit.
+            result = {
+                key: interaction.result[key] for key in (
+                    "question_id", "question_type", "complete", "remaining_question_ids",
+                    "is_correct", "result",
+                ) if key in interaction.result
+            }
+            leaf_fields = {
+                "question_id", "knowledge_point_id", "is_correct", "learner_answer",
+                "correct_label", "correct_body", "explanation", "result", "independent", "diagnosis",
+            }
+            result["results"] = [
+                {key: value for key, value in leaf.items() if key in leaf_fields}
+                for leaf in interaction.result["results"]
+            ]
+            metadata["mastery_grade"] = {
+                "question_id": pending.question_id,
+                "question_type": "group",
+                "complete": False,
+                "remaining_question_ids": interaction.result.get("remaining_question_ids", []),
+                "replayed": True,
+                "result": result,
+            }
+        return ToolResult(content=notice, metadata=metadata)
 
     async def _build_question(self, kwargs, progress):
         kp_id = str(kwargs.get("knowledge_point_id") or "").strip()
