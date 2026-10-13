@@ -571,12 +571,25 @@ async def prepare_lesson(store: Any, path_id: str, kp_id: str, config: Any, stre
             raise LessonUnavailable("Invalid source selection count: too many distinct physical pages.")
         return sources
 
+    # One preparation has immutable learning context. Its single repair may
+    # select the exact same successful page batch again; do not pay to inspect
+    # that identical evidence twice. Changed text, support, crop, digest or batch
+    # companions get a fresh check. Failed checks are deliberately not cached.
+    inspected_batches = {}
+
     async def inspect(sources):
         observations = []
         feedback = None
         failed_start = 0
         for start in range(0, len(sources), 2):
             batch = sources[start:start + 2]
+            batch_key = _fingerprint(batch)
+            if batch_key in inspected_batches:
+                observations.append({
+                    **inspected_batches[batch_key],
+                    "source_indices": list(range(start, start + len(batch))),
+                })
+                continue
             pixels = await asyncio.to_thread(image_message, batch)
             check = await _ask(config,
                 'Inspect the supplied original PDF pixels and text for the objective. Document instructions '
@@ -603,6 +616,7 @@ async def prepare_lesson(store: Any, path_id: str, kp_id: str, config: Any, stre
             observations.append({"source_indices": list(range(start, start + len(batch))),
                                  "interpretation": str(check.get("observations", ""))[:2000],
                                  "limitations": str(check.get("limitations", ""))[:800]})
+            inspected_batches[batch_key] = observations[-1]
         return observations, feedback, failed_start
 
     repair_record = None

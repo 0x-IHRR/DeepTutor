@@ -275,6 +275,30 @@ class MasteryLoopCapability:
             return kwargs
         path_id = str(context.metadata.get("mastery_path_id") or "").strip()
         state = context.extension("mastery")
+        if tool_name == "rag":
+            import asyncio
+            from deeptutor.learning.service import LearningService
+
+            session_id = str(context.session_id or "").strip()
+            turn_id = str(context.metadata.get("turn_id") or "").strip()
+
+            async def present_sources(sources, purpose):
+                if (
+                    context.metadata.get("mastery_path_id") != path_id
+                    or context.session_id != session_id
+                    or str(context.metadata.get("turn_id") or "").strip() != turn_id
+                ):
+                    raise ValueError("The mastery source presentation context changed.")
+                return await asyncio.to_thread(
+                    LearningService().present_sources, path_id, sources, purpose,
+                    session_id=session_id, turn_id=turn_id,
+                )
+
+            return {
+                **kwargs,
+                "_mastery_source_context": True,
+                "_present_mastery_sources": present_sources,
+            }
         # ``ask_user`` is deliberately untouched here. It carries clarifying
         # questions only; the graded ones are posed by ``mastery_quiz``.
         if tool_name == "read_source":
@@ -283,12 +307,16 @@ class MasteryLoopCapability:
             # The tutor calls this tool on its own schedule instead.
             updated = dict(kwargs)
             updated["source_index"] = context.metadata.get("mastery_topic_source_index") or {}
+            updated["_mastery_source_context"] = True
             return updated
         if tool_name in MASTERY_TOOL_NAMES:
             updated = dict(kwargs)
             if tool_name == "mastery_quiz":
                 state["quiz_requested"] = True
                 state["quiz_awaiting_grade"] = True
+                # Only preparation after the latest failed attempt can earn a
+                # final delivery round; an old packet must not reopen the loop.
+                state.pop("quiz_recovery_receipt", None)
                 updated["_end_turn_on_card"] = _card_end_marker(context)
             elif tool_name == "mastery_grade":
                 state["quiz_awaiting_grade"] = False
@@ -319,6 +347,15 @@ class MasteryLoopCapability:
                         "path_id": path_id, "kp_id": kp_id,
                         "policy_id": next_objective(progress).knowledge_point_id if progress else "",
                     }
+                    if (
+                        progress is not None
+                        and context.metadata.get("mastery_path_id") == path_id
+                        and state.get("quiz_requested") and not state.get("card_posted")
+                    ):
+                        state["quiz_recovery_receipt"] = {
+                            **context.metadata["mastery_lesson_objective"],
+                            "revision": progress.version,
+                        }
 
                 updated["_bind_lesson_objective"] = bind_lesson
             if tool_name == "mastery_mode":
@@ -344,6 +381,43 @@ class MasteryLoopCapability:
             updated["_tutoring_path_id"] = path_id
             return updated
         return kwargs
+
+    def settlement_recovery(self, context: UnifiedContext) -> tuple[str, tuple[str, ...]] | None:
+        """Spend one final card-only round when a failed quiz's source was repaired."""
+        if not self.is_active(context):
+            return None
+        state = context.extension("mastery")
+        receipt = state.pop("quiz_recovery_receipt", None)
+        if (
+            not receipt or not state.get("quiz_requested") or state.get("card_posted")
+            or state.get("quiz_recovery_used")
+        ):
+            return None
+        from deeptutor.learning.policy import next_objective
+        from deeptutor.learning.storage import LearningStore
+
+        path_id = context.metadata.get("mastery_path_id")
+        binding = context.metadata.get("mastery_lesson_objective") or {}
+        if (
+            receipt["path_id"] != path_id
+            or any(receipt[key] != binding.get(key) for key in ("path_id", "kp_id", "policy_id"))
+        ):
+            return None
+        progress = LearningStore().load(path_id)
+        if (
+            progress is None or progress.version != receipt["revision"]
+            or next_objective(progress).knowledge_point_id != receipt["policy_id"]
+        ):
+            return None
+        state["quiz_recovery_used"] = True
+        return (
+            "Source preparation for the quiz selected in this turn has now succeeded. "
+            "Use this single final delivery round to call mastery_quiz with a supported question "
+            "contract from the prepared evidence. Preserve the current pending question and "
+            "replacement rules. Do not search, prepare again, grade, or claim a card was delivered "
+            "in prose. If verification still fails, this turn cannot complete the delivery.",
+            ("mastery_quiz",),
+        )
 
     def finish_instruction(self, context: UnifiedContext, final_text: str) -> str | None:
         """Catch a finish that leaves the learner with nothing to answer.

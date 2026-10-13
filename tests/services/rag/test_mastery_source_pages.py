@@ -424,6 +424,21 @@ def test_final_repair_gap_preserves_already_inspected_useful_sources(material, m
     assert evidence["sources"][0]["ref"]["page_index"] == 70
 
 
+@pytest.mark.parametrize("changed_support", [False, True])
+def test_repair_reuses_only_identical_successful_inspection(material, monkeypatch, changed_support):
+    repaired = _partial_selection()
+    if changed_support:
+        repaired["selected"][0]["reason"] = "A different relationship needs inspection"
+    calls = _install_preparation(
+        material, monkeypatch, rankings=[_partial_selection(repair=True), repaired]
+    )
+    evidence = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    pixel_calls = [payload for payload, images in calls if images]
+    assert len(pixel_calls) == (2 if changed_support else 1)
+    assert evidence["sources"] and evidence["model_observations"]
+    assert not evidence["coverage"]["complete"]
+
+
 def test_focus_and_current_request_reach_preparation_without_extra_cache_calls(material, monkeypatch):
     calls = _install_preparation(material, monkeypatch)
     first = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config,

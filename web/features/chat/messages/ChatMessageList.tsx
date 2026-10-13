@@ -82,6 +82,7 @@ import {
   type MessageSegment,
 } from "@/components/chat/home/AskUserOptions";
 import { MasteryQuestionCard } from "@/components/chat/home/MasteryQuestionCard";
+import { MasterySourcePresentation } from "@/components/chat/home/MasterySourcePresentation";
 import {
   collectMasteryAnswerRejections,
   collectMasteryGrades,
@@ -1175,6 +1176,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           events={events}
         />
       )}
+      <MasterySourcePresentation events={events} />
       {/* Non-default branches (quiz, math animator, visualize) keep the
           card below the body. The default branch inlines it via
           ``messageSegments``; the research branch renders its own card

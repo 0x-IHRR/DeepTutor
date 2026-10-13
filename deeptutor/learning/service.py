@@ -56,6 +56,66 @@ _LEARNER_PROFILE_FIELDS: tuple[str, ...] = (
 )
 
 
+def _source_page_key(source: dict) -> tuple | None:
+    """Conservative physical-page identity, shared by native visual/lesson refs."""
+    ref = source.get("source_ref") or source.get("ref") or source
+    if not isinstance(ref, dict):
+        return None
+    kb = ref.get("kb_ref") or ref.get("kb_name")
+    document = ref.get("document_key") or ref.get("source_path")
+    digest = ref.get("source_digest") or ref.get("source_hash")
+    page = ref.get("page_index")
+    if page is None and type(ref.get("page")) is int:
+        page = ref["page"] - 1
+    if not kb or not document or not digest or type(page) is not int or page < 0:
+        return None
+    # Crops do not establish that a nearby printed answer was absent.
+    return kb, document, digest, page
+
+
+def _question_source_pages(question: PendingQuestion) -> set[tuple]:
+    sources = question.source_evidence.get("sources", [])
+    citations = question.source_evidence.get("assessment_contract", {}).get("citations", [])
+    if citations:
+        indices = {row.get("index") for row in citations}
+        sources = [row for index, row in enumerate(sources) if index in indices]
+    return {
+        key for source in [*sources, *question.visual_context.get("sources", [])]
+        if (key := _source_page_key(source)) is not None
+    }
+
+
+def _apply_source_assistance(progress: LearningProgress, question: PendingQuestion) -> None:
+    """Attach exposure to this attempt, never to lifelong knowledge of a page.
+
+    Same-turn pre-card display may disclose the question/key. A later receipt
+    can assist an already pending question only in its registration session.
+    Legacy exposures without native identity are not inferred from history.
+    """
+    context = question.assistance_context
+    session_id, turn_id = context.get("session_id"), context.get("turn_id")
+    if not session_id or not turn_id:
+        return
+    exposed = {
+        key for source in progress.source_exposures
+        if (key := _source_page_key(source)) is not None
+        and source.get("session_id") == session_id
+        and (
+            source.get("turn_id") == turn_id
+            or source.get("created_at", 0) >= question.created_at
+        )
+    }
+    pages = _question_source_pages(question)
+    # Without a source identity, independence after public source display is
+    # unknown. Preserve practice without inventing independent credit.
+    if exposed and (not pages or exposed.intersection(pages)):
+        question.assistance_used = True
+
+
+def _question_independent(question: PendingQuestion) -> bool:
+    return not (question.assistance_used or question.visual_context.get("hints_used"))
+
+
 def _objective_fingerprint(kp: KnowledgePoint) -> tuple[str, str]:
     return (str(kp.name or "").strip().casefold(), kp.type.value)
 
@@ -527,6 +587,7 @@ class LearningService:
         session_id: str = "",
         turn_id: str = "",
         visual_context: dict[str, Any] | None = None,
+        assistance_used: bool = False,
         verdict: dict[str, Any] | None = None,
     ) -> bool:
         """Mutate one aggregate with a grade without performing I/O."""
@@ -553,7 +614,7 @@ class LearningService:
                 user_answer=user_answer,
                 self_attribution=self_attribution,
                 error_type=None if is_correct or verdict and verdict["result"] == "partial" else classify_error(user_answer),
-                independent=not visual_context or not visual_context.get("hints_used"),
+                independent=not assistance_used and not (visual_context or {}).get("hints_used"),
                 visual_context=visual_context or {},
             ),
         )
@@ -570,11 +631,12 @@ class LearningService:
                 turn_id=turn_id,
                 assessment_type="review" if already_scheduled else "quiz",
             )
-            if visual_context:
-                evidence.visual_context = visual_context
-                evidence.hints_used = int(visual_context.get("hints_used") or 0)
-                if evidence.hints_used and is_correct:
-                    evidence.quality = min(evidence.quality or 1.0, 0.6)
+            evidence.visual_context = visual_context or {}
+            evidence.hints_used = max(
+                int((visual_context or {}).get("hints_used") or 0), int(assistance_used)
+            )
+            if evidence.hints_used and is_correct:
+                evidence.quality = min(evidence.quality or 1.0, 0.6)
             if verdict:
                 evidence.result = verdict["result"]
                 evidence.quality = {"correct": 1.0, "partial": .5, "incorrect": 0.0}[verdict["result"]]
@@ -633,6 +695,8 @@ class LearningService:
     def set_pending_question(self, progress: LearningProgress, pending: PendingQuestion) -> None:
         """Store the question the tutor just posed so its expected answer can
         be graded deterministically on a later turn (never via the model)."""
+        for question in pending.questions or [pending]:
+            _apply_source_assistance(progress, question)
         progress.pending_question = pending
         progress.updated_at = time.time()
         self.save(progress)
@@ -641,6 +705,64 @@ class LearningService:
         progress.pending_question = None
         progress.updated_at = time.time()
         self.save(progress)
+
+    def present_sources(
+        self, book_id: str, sources: list[dict], purpose: str, *,
+        session_id: str = "", turn_id: str = "",
+    ) -> list[dict]:
+        """Authorize explicit page display and persist assistance before delivery.
+
+        Called only by the trusted runtime after exact-source retrieval. A
+        failed delivery may conservatively leave a receipt; it cannot grant
+        independent credit after a possibly delivered answer-bearing page.
+        """
+        from deeptutor.services.rag.source_pages import SourceRef, public_source, resolve_source
+
+        if purpose not in {"teaching", "reveal"} or not 1 <= len(sources) <= 6:
+            raise MasteryInteractionError("Presentation needs one to six exact source pages")
+        refs = []
+        for source in sources:
+            try:
+                ref = SourceRef.model_validate(source.get("source_ref"))
+            except ValueError as exc:
+                raise MasteryInteractionError("Presentation requires an exact verified source page") from exc
+            resolve_source(ref)
+            refs.append(ref)
+        rows = [public_source(ref) for ref in refs]
+        for row in rows:
+            # A full-file link bypasses a page/crop presentation boundary.
+            row.pop("url", None)
+        pages = {_source_page_key(row) for row in rows}
+
+        def present(tx):
+            active = tx.active_interaction() or self._interaction_from_legacy_pending(tx.progress)
+            if active:
+                final_ids = {row["question_id"] for row in active.result.get("results", [])
+                             if row.get("final", True)}
+                unresolved = [q for q in active.question.questions or [active.question]
+                              if q.question_id not in final_ids]
+                if purpose == "reveal" and unresolved:
+                    raise MasteryInteractionError("Answer every pending question before revealing source pages")
+                if any(not _question_source_pages(q) or pages.intersection(_question_source_pages(q))
+                       for q in unresolved):
+                    raise MasteryInteractionError(
+                        "This source may disclose a pending answer; resolve the question before presentation"
+                    )
+            known = {(_source_page_key(row), row.get("session_id"), row.get("turn_id"))
+                     for row in tx.progress.source_exposures}
+            for row in rows:
+                key = (_source_page_key(row), session_id, turn_id)
+                if key not in known:
+                    tx.progress.source_exposures.append({
+                        "source_ref": row["source_ref"], "purpose": purpose,
+                        "session_id": session_id, "turn_id": turn_id, "created_at": time.time(),
+                    })
+                    known.add(key)
+                    tx.touch()
+            return rows
+
+        _, authorized = self._store.mutate(book_id, present)
+        return authorized
 
     @staticmethod
     def _interaction_from_legacy_pending(
@@ -777,6 +899,9 @@ class LearningService:
                         question.source_evidence = question_snapshot(
                             self._store, tx.progress, question.knowledge_point_id
                         )
+                    question.assistance_context = {"session_id": session_id, "turn_id": turn_id}
+                    question.created_at = time.time()
+                    _apply_source_assistance(tx.progress, question)
             except LessonUnavailable as exc:
                 raise MasteryInteractionError(str(exc)) from exc
             if active is not None:
@@ -1075,6 +1200,7 @@ class LearningService:
                 "is_correct": is_correct,
                 "knowledge_point_id": pending.knowledge_point_id,
                 **receipt,
+                "independent": _question_independent(pending),
             }
             if pending.visual_context:
                 interaction.result.update(
@@ -1082,7 +1208,7 @@ class LearningService:
                         "result": visual_result,
                         "diagnosis": visual_diagnosis,
                         "visual_context": pending.visual_context,
-                        "independent": not bool(pending.visual_context.get("hints_used")),
+                        "independent": _question_independent(pending),
                     }
                 )
             tx.put_interaction(interaction)
@@ -1277,9 +1403,7 @@ class LearningService:
                 final=correct is not None,
                 needs_clarification=correct is None,
                 feedback=diagnosis,
-                independent=not bool(question.visual_context.get("hints_used"))
-                if question.visual_context
-                else None,
+                independent=_question_independent(question),
             )
             result["is_correct"] = correct
             result.update((verdicts or {}).get(question.question_id, {}))
@@ -1355,6 +1479,7 @@ class LearningService:
     ) -> tuple[str, bool | None, str, str]:
         """Shared leaf grader: never creates a parent attempt or commits separately."""
         pending = interaction.question
+        _apply_source_assistance(tx.progress, pending)
         raw_answer = str(answer or "")
         if interaction.status == InteractionStatus.ANSWERED:
             stored = str(interaction.user_answer or "")
@@ -1444,6 +1569,7 @@ class LearningService:
                 session_id=session_id,
                 turn_id=turn_id,
                 visual_context=pending.visual_context,
+                assistance_used=pending.assistance_used,
                 verdict=verdict,
             )
         )
@@ -2207,9 +2333,7 @@ class LearningService:
             if correct is not None
             else str(stored.result.get("reason") or stored.result.get("diagnosis") or ""),
             result="ungraded" if correct is None else "",
-            independent=stored.result.get("independent")
-            if stored.question.visual_context
-            else None,
+            independent=stored.result.get("independent", _question_independent(stored.question)),
         )
         result.update(
             {"is_correct": correct, "knowledge_point_id": stored.question.knowledge_point_id}

@@ -283,6 +283,12 @@ class PendingQuestion(BaseModel):
     difficulty: str = ""
     # Server-side provenance snapshot; never projected onto an answer card.
     source_evidence: dict[str, Any] = Field(default_factory=dict)
+    # Server-owned exposure evidence, independent of visual-task metadata.
+    # Never included in the learner's question/answer-key projection.
+    assistance_used: bool = False
+    # Native registration identity; later teaching must not contaminate an
+    # unrelated question merely because it cites the same physical page.
+    assistance_context: dict[str, str] = Field(default_factory=dict)
     created_at: float = Field(default_factory=time.time)
     visual_context: dict[str, Any] = Field(default_factory=dict)
     accepted_answers: list[str] = Field(default_factory=list)
@@ -607,6 +613,9 @@ class LearningProgress(BaseModel):
     knowledge_types: dict[str, KnowledgeType] = Field(default_factory=dict)
     lesson_evidence: dict[str, dict[str, Any]] = Field(default_factory=dict)
     source_grounded: bool = False
+    # Exact pages authorized for learner display, kept with the native path.
+    # A private retrieval or lesson packet is not a public exposure receipt.
+    source_exposures: list[dict[str, Any]] = Field(default_factory=list)
     quiz_attempts: list[QuizAttempt] = Field(default_factory=list)
     error_records: list[ErrorRecord] = Field(default_factory=list)
     # Durable review history used to recompute retention. Distinct from

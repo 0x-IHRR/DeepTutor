@@ -1629,9 +1629,7 @@ class MasteryGradeTool(BaseTool):
                 needs_clarification=interaction.result.get("needs_clarification", False),
                 feedback=interaction.result.get("feedback", ""),
                 confidence=interaction.result.get("confidence"),
-                independent=interaction.result.get("independent")
-                if pending.visual_context
-                else None,
+                independent=interaction.result.get("independent"),
             ),
             # A graded card is not an answer to the learner. The verdict and
             # the explanation are now on it, so the model that stops here
@@ -3210,10 +3208,11 @@ class MasteryPrepareLessonTool(BaseTool):
 
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(name="mastery_prepare_lesson",
-            description="Prepare source evidence for the next teaching or practice step within an objective. Reuses validated evidence. A partial packet supports teaching only its covered material; use a specific focus to resolve the evidence needed for a question and its key. For requested exam questions, focus on actual questions and solutions in the selected question bank, not merely topic summaries. Administrative discussion does not require preparation. Uses only the path's selected materials.",
+            description="Privately prepare source evidence for the next teaching or practice step within an objective; this does not display source pages to the learner. To intentionally show a teaching image, use rag with an exact source view and presentation=teaching; use presentation=reveal after an answer. Reuses validated evidence. A partial packet supports teaching only its covered material; use a specific focus to resolve the evidence needed for a question and its key. For requested exam questions, focus on actual questions and solutions in the selected question bank, not merely topic summaries. Administrative discussion does not require preparation. Uses only the path's selected materials.",
             parameters=[
                 ToolParameter(name="knowledge_point_id", type="string", description="Stable objective ID from mastery_status."),
                 ToolParameter(name="focus", type="string", required=False,
+                    sensitive=True,
                     description="Optional next teaching step or assessment task within this objective, at most 600 characters. Include the requested source/task when relevant. Do not widen the objective or invent examination requirements."),
                 ToolParameter(name="refresh", type="boolean", required=False,
                     description="Explicit targeted retry of this focus after new retrieval information or a learner request to retry. Do not repeat unchanged preparation on every model round."),
@@ -3224,7 +3223,6 @@ class MasteryPrepareLessonTool(BaseTool):
             LessonUnavailable,
             lesson_context,
             prepare_lesson,
-            public_sources,
         )
         from deeptutor.services.llm.config import get_llm_config
 
@@ -3242,5 +3240,7 @@ class MasteryPrepareLessonTool(BaseTool):
         bind = kwargs.get("_bind_lesson_objective")
         if callable(bind):
             bind(str(kwargs.get("knowledge_point_id") or ""))
-        return ToolResult(content=lesson_context(evidence) if evidence else "This objective has no selected PDF materials.",
-                          sources=public_sources(evidence))
+        return ToolResult(
+            content=lesson_context(evidence) if evidence else "This objective has no selected PDF materials.",
+            public_result={"content": "Lesson source evidence prepared privately."},
+        )
