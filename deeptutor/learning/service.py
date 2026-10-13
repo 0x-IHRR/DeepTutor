@@ -172,8 +172,8 @@ def _update_quiz_evidence_for_attempts(
         if match_index is None:
             continue
         attempt = unmatched.pop(match_index)
-        event.result = "correct" if attempt.is_correct else "incorrect"
-        event.quality = 1.0 if attempt.is_correct else 0.0
+        event.result = attempt.result or ("correct" if attempt.is_correct else "incorrect")
+        event.quality = {"correct":1.0,"partial":.5,"incorrect":0.0}[event.result]
         if event.hints_used and attempt.is_correct:
             event.quality = min(event.quality, 0.6)
 
@@ -463,7 +463,7 @@ class LearningService:
     def calculate_mastery(self, progress: LearningProgress, kp_id: str) -> float:
         """Mastery 0..1 for *kp_id* from its attempt history (policy in mastery.py)."""
         correctness = [
-            a.is_correct
+            .5 if a.result == "partial" else a.is_correct
             for a in progress.quiz_attempts
             if a.knowledge_point_id == kp_id and not a.voided and a.independent
         ]
@@ -527,9 +527,10 @@ class LearningService:
         session_id: str = "",
         turn_id: str = "",
         visual_context: dict[str, Any] | None = None,
+        verdict: dict[str, Any] | None = None,
     ) -> bool:
         """Mutate one aggregate with a grade without performing I/O."""
-        is_correct = bool(expected_answer) and grade_answer(
+        is_correct = verdict["result"] == "correct" if verdict else bool(expected_answer) and grade_answer(
             user_answer, expected_answer, question_type
         )
         # Capture the active retry before recording this answer graduates it.
@@ -548,9 +549,10 @@ class LearningService:
                 knowledge_point_id=knowledge_point_id,
                 module_id=module_id,
                 is_correct=is_correct,
+                result=verdict["result"] if verdict else ("correct" if is_correct else "incorrect"),
                 user_answer=user_answer,
                 self_attribution=self_attribution,
-                error_type=None if is_correct else classify_error(user_answer),
+                error_type=None if is_correct or verdict and verdict["result"] == "partial" else classify_error(user_answer),
                 independent=not visual_context or not visual_context.get("hints_used"),
                 visual_context=visual_context or {},
             ),
@@ -573,6 +575,14 @@ class LearningService:
                 evidence.hints_used = int(visual_context.get("hints_used") or 0)
                 if evidence.hints_used and is_correct:
                     evidence.quality = min(evidence.quality or 1.0, 0.6)
+            if verdict:
+                evidence.result = verdict["result"]
+                evidence.quality = {"correct": 1.0, "partial": .5, "incorrect": 0.0}[verdict["result"]]
+                evidence.confidence = verdict.get("confidence")
+                evidence.learner_answer = user_answer
+                evidence.feedback = verdict.get("feedback", "")
+                if evidence.hints_used and is_correct:
+                    evidence.quality = min(evidence.quality, .6)
             self.update_mastery(
                 progress, knowledge_point_id, self.calculate_mastery(progress, knowledge_point_id)
             )
@@ -703,21 +713,31 @@ class LearningService:
                         resume_question_id, active.interaction_id if active else ""
                     )
                 if active.status not in {
-                    InteractionStatus.REGISTERED, InteractionStatus.AWAITING_INPUT,
+                    InteractionStatus.REGISTERED, InteractionStatus.AWAITING_INPUT, InteractionStatus.ANSWERED,
                 }:
                     raise MasteryInteractionError("This question is no longer awaiting input; refresh mastery_status")
+                from deeptutor.learning.lesson_evidence import LessonUnavailable
 
                 graded_ids = {
                     result["question_id"] for result in (active.result or {}).get("results", [])
+                    if result.get("final", True)
                 }
-                if set(active.answers) - graded_ids:
+                reviewed_ids = {result["question_id"] for result in (active.result or {}).get("results", [])}
+                if set(active.answers) - reviewed_ids:
                     raise MasteryInteractionError(
                         "Grade the committed answers before re-presenting the remaining card"
                     )
                 known_ids = {kp.id for module in tx.progress.modules for kp in module.knowledge_points}
-                for question in active.question.questions or [active.question]:
-                    if question.question_id not in graded_ids and question.knowledge_point_id not in known_ids:
-                        raise MasteryInteractionError("The pending objective changed; refresh mastery_status")
+                try:
+                    for question in active.question.questions or [active.question]:
+                        if question.question_id in graded_ids:
+                            continue
+                        if question.knowledge_point_id not in known_ids:
+                            raise MasteryInteractionError("The pending objective changed; refresh mastery_status")
+                        from deeptutor.learning.semantic_assessment import validate_question
+                        validate_question(self._store, tx.progress, question)
+                except LessonUnavailable as exc:
+                    raise MasteryInteractionError(str(exc)) from exc
                 return active, False
             if active is not None and pending_action == "retain":
                 if bool(pending.questions) != bool(active.question.questions):
@@ -746,6 +766,19 @@ class LearningService:
                     raise MasteryInteractionError(
                         f"Unknown objective {question.knowledge_point_id!r}; refresh mastery_status"
                     )
+            from deeptutor.learning.lesson_evidence import LessonUnavailable, question_snapshot
+
+            try:
+                for question in leaves:
+                    if question.source_evidence.get("assessment_contract"):
+                        from deeptutor.learning.semantic_assessment import validate_question
+                        validate_question(self._store, tx.progress, question)
+                    else:
+                        question.source_evidence = question_snapshot(
+                            self._store, tx.progress, question.knowledge_point_id
+                        )
+            except LessonUnavailable as exc:
+                raise MasteryInteractionError(str(exc)) from exc
             if active is not None:
                 active.status = InteractionStatus.ABANDONED
                 tx.put_interaction(active)
@@ -896,6 +929,17 @@ class LearningService:
                 )
             elif (
                 interaction.status == InteractionStatus.ANSWERED
+                and interaction.result.get("final") is False
+            ):
+                tx.emit("assessment.revised", {"question_id": interaction.interaction_id,
+                        "previous_answer": interaction.user_answer, "previous_result": interaction.result},
+                        session_id=session_id, turn_id=turn_id)
+                interaction.user_answer = str(answer or "")
+                interaction.session_id = session_id or interaction.session_id
+                interaction.turn_id = turn_id or interaction.turn_id
+                tx.put_interaction(interaction)
+            elif (
+                interaction.status == InteractionStatus.ANSWERED
                 and interaction.question.question_type == "choice"
             ):
                 # Recover from a prior unreadable composer commit (#1004): allow
@@ -936,6 +980,7 @@ class LearningService:
         scheduler: SpacedRepetitionScheduler | None = None,
         session_id: str = "",
         turn_id: str = "",
+        _assessment: dict | None = None,
     ) -> tuple[LearningProgress, MasteryInteraction, bool]:
         """Grade and resolve an interaction in one idempotent transaction.
 
@@ -968,6 +1013,17 @@ class LearningService:
                 return interaction, True
             if interaction.status == InteractionStatus.ABANDONED:
                 raise NoPendingInteractionError("The question was abandoned")
+            if _assessment:
+                from deeptutor.learning.lesson_evidence import objective_fingerprint
+                from deeptutor.learning.semantic_assessment import fingerprint
+                if fingerprint(interaction.model_dump()) != _assessment["state"] or any(
+                    objective_fingerprint(tx.progress, key) != value
+                    for key, value in _assessment["objectives"].items()
+                ):
+                    raise MasteryInteractionError("The question, answer or objective changed during assessment; retry.")
+                for question in interaction.question.questions or [interaction.question]:
+                    if question.question_id in _assessment.get("sources", {}):
+                        question.source_evidence = _assessment["sources"][question.question_id]
 
             if interaction.question.questions:
                 return self._grade_group(
@@ -977,7 +1033,16 @@ class LearningService:
                     scheduler=scheduler,
                     session_id=session_id,
                     turn_id=turn_id,
+                    verdicts=_assessment["verdicts"] if _assessment else None,
                 )
+
+            from deeptutor.learning.lesson_evidence import LessonUnavailable
+
+            try:
+                from deeptutor.learning.semantic_assessment import validate_question
+                validate_question(self._store, tx.progress, interaction.question)
+            except LessonUnavailable as exc:
+                raise MasteryInteractionError(str(exc)) from exc
 
             raw_answer, is_correct, visual_result, visual_diagnosis = self._evaluate_question(
                 tx,
@@ -989,20 +1054,27 @@ class LearningService:
                 scheduler=scheduler,
                 session_id=session_id,
                 turn_id=turn_id,
+                verdict=(_assessment or {}).get("verdicts", {}).get(interaction.question.question_id),
             )
             pending = interaction.question
+            receipt = (_assessment or {}).get("verdicts", {}).get(pending.question_id, {})
+            if visual_result == "ungraded" and not receipt:
+                receipt = {"result":"ungraded", "final":False, "needs_clarification":True,
+                           "feedback":visual_diagnosis, "confidence":None, "is_correct":None}
             if (
                 tx.progress.pending_question is not None
                 and tx.progress.pending_question.question_id == pending.question_id
+                and receipt.get("final", True)
             ):
                 tx.progress.pending_question = None
-            interaction.status = InteractionStatus.GRADED
+            interaction.status = InteractionStatus.GRADED if receipt.get("final", True) else InteractionStatus.ANSWERED
             interaction.user_answer = raw_answer
             interaction.session_id = session_id or interaction.session_id
             interaction.turn_id = turn_id or interaction.turn_id
             interaction.result = {
                 "is_correct": is_correct,
                 "knowledge_point_id": pending.knowledge_point_id,
+                **receipt,
             }
             if pending.visual_context:
                 interaction.result.update(
@@ -1100,8 +1172,10 @@ class LearningService:
         submitted = self._validate_group_answers(
             interaction.question, interaction.answers if answers is None else answers
         )
+        revisable = {row["question_id"] for row in interaction.result.get("results", []) if row.get("final") is False}
         if any(
             key in interaction.answers and interaction.answers[key] != value
+            and key not in revisable
             for key, value in submitted.items()
         ):
             raise MasteryInteractionError("This group already has a different committed answer")
@@ -1110,23 +1184,20 @@ class LearningService:
     @staticmethod
     def _group_result(pending: PendingQuestion, results: list[dict]) -> dict:
         values = [result["is_correct"] for result in results]
-        graded_ids = {result["question_id"] for result in results}
+        graded_ids = {result["question_id"] for result in results if result.get("final", True)}
         remaining = [q.question_id for q in pending.questions if q.question_id not in graded_ids]
         complete = not remaining
+        outcomes = {row.get("result") or ("correct" if row["is_correct"] else "incorrect") for row in results}
         return {
             "question_id": pending.question_id,
             "question_type": "group",
             "results": results,
             "complete": complete,
+            "final": complete,
+            "needs_clarification": any(row.get("needs_clarification", False) for row in results),
             "remaining_question_ids": remaining,
             "is_correct": None if not complete or None in values else all(values),
-            "result": "ungraded"
-            if not complete or all(value is None for value in values)
-            else "mixed"
-            if len(set(values)) > 1
-            else "correct"
-            if all(values)
-            else "incorrect",
+            "result": "ungraded" if not complete else next(iter(outcomes)) if len(outcomes) == 1 else "mixed",
         }
 
     def _grade_group(
@@ -1138,6 +1209,7 @@ class LearningService:
         scheduler=None,
         session_id="",
         turn_id="",
+        verdicts=None,
     ) -> tuple[MasteryInteraction, bool]:
         """Commit new replies once; unanswered siblings remain awaiting input."""
         pending = interaction.question
@@ -1145,6 +1217,7 @@ class LearningService:
         known_ids = {kp.id for module in tx.progress.modules for kp in module.knowledge_points}
         if any(q.knowledge_point_id not in known_ids for q in pending.questions):
             raise MasteryInteractionError("An objective changed; refresh the question group")
+        from deeptutor.learning.lesson_evidence import LessonUnavailable
         from deeptutor.learning.question_card import build_grade_result
 
         leaves = []
@@ -1155,18 +1228,28 @@ class LearningService:
             if stored is not None and (
                 stored.result.get("group_question_id") != pending.question_id
                 or stored.question.knowledge_point_id != question.knowledge_point_id
-                or stored.user_answer != submitted[question.question_id]
+                or stored.user_answer != submitted[question.question_id] and stored.result.get("final", True)
             ):
                 raise MasteryInteractionError("This child belongs to another interaction or reply")
+            if stored is None or stored.status != InteractionStatus.GRADED or not stored.result.get("final", True):
+                try:
+                    from deeptutor.learning.semantic_assessment import validate_question
+                    validate_question(self._store, tx.progress, question)
+                except LessonUnavailable as exc:
+                    raise MasteryInteractionError(str(exc)) from exc
             leaves.append((question, stored))
 
         results = []
         new_results = False
         for question, stored in leaves:
-            if stored is not None and stored.status == InteractionStatus.GRADED:
+            if stored is not None and stored.status == InteractionStatus.GRADED and stored.result.get("final", True):
                 results.append(self._group_leaf_result(stored))
                 continue
             new_results = True
+            if stored:
+                tx.emit("assessment.revised", {"question_id": question.question_id,
+                        "previous_answer": stored.user_answer, "previous_result": stored.result},
+                        session_id=session_id, turn_id=turn_id)
             leaf = MasteryInteraction(
                 interaction_id=question.question_id,
                 path_id=interaction.path_id,
@@ -1181,6 +1264,7 @@ class LearningService:
                 scheduler=scheduler,
                 session_id=session_id,
                 turn_id=turn_id,
+                verdict=(verdicts or {}).get(question.question_id),
             )
             result = build_grade_result(
                 question_id=question.question_id,
@@ -1190,11 +1274,15 @@ class LearningService:
                 choice_options=question.choice_map,
                 explanation=question.explanation if correct is not None else diagnosis,
                 result=visual_result,
+                final=correct is not None,
+                needs_clarification=correct is None,
+                feedback=diagnosis,
                 independent=not bool(question.visual_context.get("hints_used"))
                 if question.visual_context
                 else None,
             )
             result["is_correct"] = correct
+            result.update((verdicts or {}).get(question.question_id, {}))
             result["knowledge_point_id"] = question.knowledge_point_id
             if diagnosis:
                 result["diagnosis"] = diagnosis
@@ -1215,7 +1303,7 @@ class LearningService:
                 session_id=session_id,
                 turn_id=turn_id,
             )
-            if correct is not None:
+            if correct is not None or result.get("result") == "partial":
                 evidence = tx.progress.learning_evidence[-1]
                 tx.emit(
                     "evidence.recorded",
@@ -1233,7 +1321,9 @@ class LearningService:
         interaction.result = self._group_result(pending, results)
         complete = interaction.result["complete"]
         interaction.status = (
-            InteractionStatus.GRADED if complete else InteractionStatus.AWAITING_INPUT
+            InteractionStatus.GRADED if complete else
+            InteractionStatus.ANSWERED if interaction.status == InteractionStatus.ANSWERED else
+            InteractionStatus.AWAITING_INPUT
         )
         interaction.answers = submitted
         interaction.session_id = session_id or interaction.session_id
@@ -1261,6 +1351,7 @@ class LearningService:
         scheduler: SpacedRepetitionScheduler | None = None,
         session_id: str = "",
         turn_id: str = "",
+        verdict: dict | None = None,
     ) -> tuple[str, bool | None, str, str]:
         """Shared leaf grader: never creates a parent attempt or commits separately."""
         pending = interaction.question
@@ -1331,9 +1422,16 @@ class LearningService:
                 pending.visual_context["teaching_after_question"] = True
             if visual_result == "correct":
                 graded_answer = authoritative_answer
+            if verdict and verdict["final"]:
+                from deeptutor.learning.visual_practice import verified_visual_images
+                try:
+                    verified_visual_images(pending)
+                except ValueError as exc:
+                    raise MasteryInteractionError(str(exc)) from exc
+                visual_result = verdict["result"]
         is_correct = (
             None
-            if visual_result == "ungraded"
+            if visual_result == "ungraded" or verdict and not verdict["final"]
             else self._apply_grade(
                 tx.progress,
                 question_id=pending.question_id,
@@ -1346,8 +1444,13 @@ class LearningService:
                 session_id=session_id,
                 turn_id=turn_id,
                 visual_context=pending.visual_context,
+                verdict=verdict,
             )
         )
+        if verdict:
+            is_correct = verdict["is_correct"]
+            visual_result = verdict["result"]
+            visual_diagnosis = verdict["feedback"]
         return raw_answer, is_correct, visual_result, visual_diagnosis
 
     def replace_modules_for_path(
@@ -1823,6 +1926,7 @@ class LearningService:
         scheduler: SpacedRepetitionScheduler | None = None,
         session_id: str = "",
         turn_id: str = "",
+        _assessment: dict | None = None,
     ) -> tuple[LearningProgress, dict]:
         """Void or re-key one question and rebuild that objective's evidence."""
 
@@ -1876,6 +1980,25 @@ class LearningService:
                 if attempt.question_id == resolved_id
             ]
             question = interaction.question if interaction is not None else pending
+            original_expected = question.expected_answer if question is not None else ""
+            previous_result = dict(interaction.result) if interaction else {}
+            if action_name == "correct" and previous_result.get("confidence") is not None and not _assessment:
+                raise MasteryInteractionError("A semantic verdict requires semantic re-evaluation; use repair_question_semantic.")
+            if _assessment:
+                from deeptutor.learning.lesson_evidence import (
+                    LessonUnavailable,
+                    objective_fingerprint,
+                )
+                from deeptutor.learning.semantic_assessment import fingerprint, validate_question
+                if (interaction is None or fingerprint(interaction.model_dump()) != _assessment["state"] or
+                    objective_fingerprint(tx.progress, question.knowledge_point_id) != _assessment["objective"]):
+                    raise MasteryInteractionError("Question or answer changed during correction; retry.")
+                question = _assessment["question"].model_copy(deep=True)
+                try:
+                    validate_question(self._store, tx.progress, question)
+                except LessonUnavailable as exc:
+                    raise MasteryInteractionError(str(exc)) from exc
+                interaction.question = question
             if question is not None and question.questions:
                 raise MasteryInteractionError(
                     "A group has no aggregate answer key; review or challenge an individual child question_id"
@@ -1887,7 +2010,7 @@ class LearningService:
                 attempts[0].module_id if attempts else ""
             )
             question_type = question.question_type if question is not None else "short"
-            previous_expected = question.expected_answer if question is not None else ""
+            previous_expected = original_expected
             previous_is_correct = attempts[0].is_correct if attempts else None
             if action_name == "correct" and question is not None and question.visual_context:
                 from deeptutor.learning.visual_practice import prepare_visual
@@ -1948,6 +2071,16 @@ class LearningService:
                 repaired_correct = None
             else:
                 new_expected = str(expected_answer or "").strip()
+                from deeptutor.learning.lesson_evidence import LessonUnavailable, validate_evidence
+
+                try:
+                    if _assessment:
+                        validate_question(self._store, tx.progress, question)
+                    else:
+                        validate_evidence(self._store, tx.progress, kp_id,
+                                          question.source_evidence if question else {})
+                except LessonUnavailable as exc:
+                    raise MasteryInteractionError(str(exc)) from exc
                 if question is not None:
                     question.expected_answer = new_expected
                 if interaction is not None:
@@ -1961,20 +2094,24 @@ class LearningService:
                     for attempt in attempts:
                         if attempt.voided:
                             continue
-                        is_correct = bool(new_expected) and grade_answer(
+                        receipt = _assessment.get("receipt") if _assessment else None
+                        is_correct = receipt["result"] == "correct" if receipt else bool(new_expected) and grade_answer(
                             str(attempt.user_answer or ""),
                             new_expected,
                             question_type,
                         )
                         attempt.is_correct = is_correct
+                        attempt.result = receipt["result"] if receipt else ("correct" if is_correct else "incorrect")
                         attempt.error_type = (
-                            None if is_correct else classify_error(str(attempt.user_answer or ""))
+                            None if is_correct or attempt.result == "partial" else classify_error(str(attempt.user_answer or ""))
                         )
                         repaired_correct = is_correct
                         if is_correct:
                             for record in tx.progress.error_records:
                                 if record.question_id == resolved_id:
                                     record.status = "graduated"
+                        elif attempt.result == "partial":
+                            tx.progress.error_records = [record for record in tx.progress.error_records if record.question_id != resolved_id]
                         elif not any(
                             record.question_id == resolved_id
                             for record in tx.progress.error_records
@@ -1991,11 +2128,17 @@ class LearningService:
                                 )
                             )
                 if interaction is not None:
+                    repair_receipt = ((_assessment or {}).get("receipt") or {
+                        "result":"correct" if repaired_correct else "incorrect", "final":True,
+                        "needs_clarification":False, "feedback":note, "confidence":None})
+                    if _assessment and _assessment.get("receipt"):
+                        repaired_correct = repair_receipt["is_correct"]
                     interaction.result = {
                         **dict(interaction.result or {}),
                         "is_correct": repaired_correct,
                         "corrected": True,
                         "reason": note,
+                        **repair_receipt,
                     }
                     tx.put_interaction(interaction)
                 _update_quiz_evidence_for_attempts(
@@ -2016,6 +2159,8 @@ class LearningService:
                     "previous_expected": previous_expected,
                     "expected_answer": new_expected,
                     "previous_is_correct": previous_is_correct,
+                    "previous_result": previous_result,
+                    "learner_answer": user_answer,
                     "is_correct": repaired_correct,
                 },
                 session_id=session_id or (interaction.session_id if interaction else ""),
@@ -2031,6 +2176,8 @@ class LearningService:
                 "expected_answer": new_expected,
                 "previous_is_correct": previous_is_correct,
                 "is_correct": repaired_correct,
+                "result": interaction.result.get("result", "") if interaction else "",
+                "feedback": interaction.result.get("feedback", "") if interaction else "",
                 "user_answer": user_answer,
                 "question_type": question_type,
                 "prompt": question.prompt if question is not None else "",
@@ -2067,6 +2214,9 @@ class LearningService:
         result.update(
             {"is_correct": correct, "knowledge_point_id": stored.question.knowledge_point_id}
         )
+        result.update({key: stored.result[key] for key in (
+            "result", "final", "needs_clarification", "feedback", "confidence"
+        ) if key in stored.result})
         if stored.result.get("diagnosis"):
             result["diagnosis"] = stored.result["diagnosis"]
         return result
@@ -2192,6 +2342,7 @@ class LearningService:
         scheduler: SpacedRepetitionScheduler | None = None,
         session_id: str = "",
         turn_id: str = "",
+        _assessment: dict | None = None,
     ) -> LearningProgress:
         def record(tx):
             from deeptutor.learning.policy import QUALITATIVE_TYPES, find_knowledge_point
@@ -2205,6 +2356,20 @@ class LearningService:
                 raise MasteryInteractionError(
                     f"Objective {kp.name!r} must be graded with mastery_quiz + mastery_grade"
                 )
+            from deeptutor.learning.lesson_evidence import LessonUnavailable, validate_evidence
+
+            try:
+                validate_evidence(
+                    self._store, tx.progress, kp_id, tx.progress.lesson_evidence.get(kp_id, {})
+                )
+                if _assessment:
+                    from deeptutor.learning.lesson_evidence import objective_fingerprint
+                    from deeptutor.learning.semantic_assessment import fingerprint
+                    if (objective_fingerprint(tx.progress, kp_id) != _assessment["objective"] or
+                        fingerprint(tx.progress.lesson_evidence.get(kp_id, {})) != _assessment["source"]):
+                        raise MasteryInteractionError("Objective or source changed during assessment; retry.")
+            except LessonUnavailable as exc:
+                raise MasteryInteractionError(str(exc)) from exc
             applied = self.record_qualitative_in_memory(
                 tx.progress,
                 kp_id,
@@ -2213,6 +2378,7 @@ class LearningService:
                 scheduler=scheduler,
                 session_id=session_id,
                 turn_id=turn_id,
+                verdict=_assessment["receipt"] if _assessment else None,
             )
             if not applied:
                 return
@@ -2254,6 +2420,7 @@ class LearningService:
         scheduler: SpacedRepetitionScheduler | None = None,
         session_id: str = "",
         turn_id: str = "",
+        verdict: dict | None = None,
     ) -> bool:
         evidence_id = ""
         if session_id or turn_id:
@@ -2275,8 +2442,11 @@ class LearningService:
             knowledge_point_id=kp_id,
             timestamp=moment,
             assessment_type="qualitative",
-            result="correct" if passed else "partial",
-            quality=(1.0 if evidence else 0.9) if passed else 0.2,
+            result=verdict["result"] if verdict else ("correct" if passed else "partial"),
+            quality={"correct":1.0,"partial":.5,"incorrect":0.0}[verdict["result"]] if verdict else ((1.0 if evidence else 0.9) if passed else 0.2),
+            confidence=verdict.get("confidence") if verdict else None,
+            learner_answer=evidence,
+            feedback=verdict.get("feedback", "") if verdict else "",
             attempt_count=1,
             session_id=session_id,
             turn_id=turn_id,
@@ -2385,6 +2555,187 @@ class LearningService:
 
     def save(self, progress: LearningProgress) -> None:
         self._store.save(progress)
+
+
+    async def assess_qualitative_semantic(self, book_id, kp_id, *, learner_answer, config=None, **kwargs):
+        from deeptutor.learning import semantic_assessment as semantic
+        from deeptutor.learning.lesson_evidence import (
+            LessonUnavailable,
+            objective_fingerprint,
+            validate_evidence,
+        )
+        from deeptutor.learning.policy import find_knowledge_point
+        answer = str(learner_answer or "").strip()
+        if not answer or len(answer) > 10000:
+            raise MasteryInteractionError("Assessment needs the actual learner explanation, at most 10000 characters.")
+        progress = self._store.load(book_id)
+        kp, module_id, _ = find_knowledge_point(progress, kp_id)
+        if kp is None:
+            raise MasteryInteractionError("Unknown objective")
+        session_id, turn_id = kwargs.get("session_id", ""), kwargs.get("turn_id", "")
+        if session_id or turn_id:
+            evidence_id = uuid.uuid5(uuid.NAMESPACE_URL,
+                f"deeptutor:qualitative:{session_id}:{turn_id}:{kp_id}").hex
+            existing = next((item for item in progress.learning_evidence if item.evidence_id == evidence_id), None)
+            if existing:
+                return progress, semantic.Verdict(result=existing.result,
+                    confidence=existing.confidence if existing.confidence is not None else 1.0,
+                    feedback=existing.feedback or "Previously saved assessment.").receipt()
+        evidence = progress.lesson_evidence.get(kp_id, {})
+        try:
+            validate_evidence(self._store, progress, kp_id, evidence)
+            objective = objective_fingerprint(progress, kp_id)
+            decisions = await semantic.judge_answers(config, [{"question_id":kp_id,
+                "prompt":"Explain this objective in your own words: " + kp.name,
+                "expected_answer":"A complete, accurate explanation of the objective and its relationships; do not infer mastery from acknowledgements or requests.",
+                "objective":kp.model_dump(), "module_id":module_id,
+                "answer":answer, "source_evidence":evidence}])
+        except (semantic.AssessmentUnavailable, LessonUnavailable) as exc:
+            raise MasteryInteractionError(str(exc)) from exc
+        receipt = decisions[kp_id].receipt()
+        if not receipt["final"]:
+            return progress, receipt
+        progress = self.record_qualitative_for_path(book_id, kp_id, passed=receipt["result"] == "correct",
+            evidence=answer, _assessment={"objective":objective, "source":semantic.fingerprint(evidence), "receipt":receipt}, **kwargs)
+        return progress, receipt
+
+
+    async def grade_interaction_semantic(self, book_id: str, *, config=None, **kwargs):
+        """Evaluate outside the transaction, then fence every input at commit."""
+        from deeptutor.learning import semantic_assessment as semantic
+        from deeptutor.learning.lesson_evidence import LessonUnavailable, objective_fingerprint
+        question_id = kwargs.get("question_id", "")
+        interaction = (self._store.get_interaction(book_id, question_id) if question_id
+                       else self._store.get_active_interaction(book_id))
+        if interaction is None:
+            legacy_progress = self._store.load(book_id)
+            legacy = legacy_progress.pending_question if legacy_progress else None
+            if legacy is not None and (not question_id or legacy.question_id == question_id):
+                interaction = self.record_question_answer(book_id, kwargs.get("answer", ""),
+                    answers=kwargs.get("answers"), interaction_id=question_id,
+                    session_id=kwargs.get("session_id", ""), turn_id=kwargs.get("turn_id", ""))
+        if interaction is None or interaction.status in {InteractionStatus.GRADED, InteractionStatus.ABANDONED}:
+            return self.grade_interaction(book_id, **kwargs)
+        progress = self._store.load(book_id)
+        state = semantic.fingerprint(interaction.model_dump())
+        pending = interaction.question
+        answers = (self._merge_group_answers(interaction, kwargs.get("answers")) if pending.questions else
+                   {pending.question_id: interaction.user_answer if interaction.status == InteractionStatus.ANSWERED else kwargs.get("answer", "")})
+        if not pending.questions and pending.question_type == "choice":
+            from deeptutor.learning.pending import is_readable_choice_answer
+            if not is_readable_choice_answer(answers[pending.question_id], pending.choice_map):
+                answers[pending.question_id] = kwargs.get("answer", "")
+        verdicts, items, objectives, source_updates = {}, [], {}, {}
+        try:
+            for question in pending.questions or [pending]:
+                if question.question_id not in answers:
+                    continue
+                if len(answers[question.question_id]) > 10000:
+                    raise MasteryInteractionError("An assessment answer must be at most 10000 characters.")
+                stored = self._store.get_interaction(book_id, question.question_id) if pending.questions else None
+                if stored and stored.status == InteractionStatus.GRADED and stored.result.get("final", True):
+                    continue
+                if question.source_evidence and not question.source_evidence.get("assessment_contract"):
+                    await semantic.bind_question(self._store, progress, question, config)
+                    source_updates[question.question_id] = question.source_evidence
+                semantic.validate_question(self._store, progress, question)
+                objectives[question.knowledge_point_id] = objective_fingerprint(progress, question.knowledge_point_id)
+                if question.visual_context:
+                    from deeptutor.learning.visual_practice import (
+                        evaluate_visual,
+                        verified_visual_images,
+                    )
+                    visual_result, diagnosis = evaluate_visual(question, answers[question.question_id])
+                    if visual_result in {"correct", "incorrect"}:
+                        continue
+                    try:
+                        images = verified_visual_images(question)
+                    except ValueError:
+                        # A failed source/key/pixel check remains ungraded; a
+                        # semantic model cannot promote missing authority.
+                        verdicts[question.question_id] = semantic.Verdict(result="ungraded", confidence=0, feedback=diagnosis).receipt()
+                        continue
+                    if question.question_type == "choice":
+                        verdicts[question.question_id] = semantic.Verdict(result="ungraded", confidence=0, feedback=diagnosis).receipt()
+                        continue
+                    items.append({**semantic.question_contract(question), "answer":answers[question.question_id],
+                                  "source_evidence":{}, "_visual_images":images})
+                    continue
+                exact = semantic.exact_verdict(question, answers[question.question_id])
+                if exact:
+                    verdicts[question.question_id] = exact.receipt()
+                else:
+                    items.append({**semantic.question_contract(question), "answer":answers[question.question_id],
+                                  "source_evidence":question.source_evidence})
+            if items:
+                decisions = await semantic.judge_answers(config, items)
+                verdicts.update({key:value.receipt() for key,value in decisions.items()})
+        except (semantic.AssessmentUnavailable, LessonUnavailable) as exc:
+            raise MasteryInteractionError(str(exc)) from exc
+        return self.grade_interaction(book_id, _assessment={"state":state, "objectives":objectives,
+                                      "verdicts":verdicts, "sources":source_updates}, **kwargs)
+
+
+    async def repair_question_semantic(self, book_id, question_id="", *, config=None, **kwargs):
+        """A challenged grade is corrected durably, with the same source/answer fences."""
+        if kwargs.get("action") != "correct":
+            return self.repair_question(book_id, question_id, **kwargs)
+        from deeptutor.learning import semantic_assessment as semantic
+        from deeptutor.learning.lesson_evidence import LessonUnavailable, objective_fingerprint
+        progress = self._store.load(book_id)
+        interaction = self._store.get_interaction(book_id, question_id) if question_id else self._store.get_active_interaction(book_id)
+        if interaction is None and not question_id and progress.quiz_attempts:
+            interaction = self._store.get_interaction(book_id, progress.quiz_attempts[-1].question_id)
+        if interaction is None or interaction.question.questions:
+            raise MasteryInteractionError("Correct an exact stored leaf question_id; otherwise void the unsupported record.")
+        question = interaction.question.model_copy(deep=True)
+        question.expected_answer = str(kwargs.get("expected_answer") or "").strip()
+        if question.expected_answer != interaction.question.expected_answer:
+            question.accepted_answers = []
+        if not question.expected_answer:
+            raise MasteryInteractionError("Correcting a question requires its answer key.")
+        if question.question_type == "choice" and question.choice_map:
+            from deeptutor.learning.pending import resolve_choice_submission
+            corrected_label = resolve_choice_submission(question.expected_answer, question.choice_map)
+            if not corrected_label:
+                raise MasteryInteractionError("The corrected key must identify one stored option.")
+            question.expected_answer = corrected_label
+            kwargs["expected_answer"] = corrected_label
+        answers = {str(a.user_answer or "") for a in progress.quiz_attempts if a.question_id == interaction.interaction_id and not a.voided}
+        if len(answers) > 1:
+            raise MasteryInteractionError("This legacy question has multiple distinct attempts; void it rather than overwriting their independent decisions.")
+        answer = next(iter(answers), interaction.user_answer)
+        receipt = None
+        try:
+            if question.visual_context:
+                from deeptutor.learning.visual_practice import (
+                    prepare_visual,
+                    verified_visual_images,
+                )
+                question.visual_context, question.accepted_answers = prepare_visual(
+                    {**question.visual_context, "accepted_answers":[], "key_status":"verified"},
+                    expected_answer=question.expected_answer, options=question.choice_map)
+                images = verified_visual_images(question)
+            else:
+                images = []
+            await semantic.bind_question(self._store, progress, question, config)
+            if answer:
+                exact = semantic.exact_verdict(question, answer)
+                if exact:
+                    receipt = exact.receipt()
+                else:
+                    decisions = await semantic.judge_answers(config, [{**semantic.question_contract(question),
+                        "answer":answer, "source_evidence":question.source_evidence,
+                        "_visual_images":images}])
+                    receipt = decisions[question.question_id].receipt()
+                if not receipt["final"]:
+                    raise MasteryInteractionError("The challenged grade remains uncertain; clarify or void it. No correction was saved.")
+        except (semantic.AssessmentUnavailable, LessonUnavailable, ValueError) as exc:
+            raise MasteryInteractionError(str(exc)) from exc
+        return self.repair_question(book_id, interaction.interaction_id,
+            _assessment={"state":semantic.fingerprint(interaction.model_dump()),
+                         "objective":objective_fingerprint(progress, question.knowledge_point_id),
+                         "question":question, "receipt":receipt}, **kwargs)
 
 
 __all__ = [

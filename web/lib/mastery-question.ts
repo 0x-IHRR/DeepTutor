@@ -59,6 +59,11 @@ export interface MasteryGradeResult {
   correctBody: string;
   explanation: string;
   result?: string;
+  final?: boolean;
+  needsClarification?: boolean;
+  feedback?: string;
+  confidence?: number | null;
+  receiptKey?: string;
   independent?: boolean;
   results?: MasteryGradeResult[];
   /** Older complete grades omit these incremental-group fields. */
@@ -147,6 +152,10 @@ function parseGrade(value: unknown): MasteryGradeResult | null {
     correctBody: text(raw.correct_body),
     explanation: text(raw.explanation),
     ...(text(raw.result) ? { result: text(raw.result) } : {}),
+    final: raw.final !== false,
+    needsClarification: raw.needs_clarification === true,
+    feedback: text(raw.feedback),
+    confidence: typeof raw.confidence === "number" ? raw.confidence : null,
     ...(typeof raw.independent === "boolean" ? { independent: raw.independent } : {}),
     ...(results ? { results } : {}),
     ...(typeof raw.complete === "boolean" ? { complete: raw.complete } : {}),
@@ -228,6 +237,8 @@ export function collectMasteryGrades(
       );
       const grade = parseGrade(payload?.result);
       if (grade) {
+        grade.receiptKey = `${event.turn_id}:${event.seq}:${event.metadata?.call_id ?? ""}`;
+        for (const child of grade.results ?? []) child.receiptKey = `${grade.receiptKey}:${child.questionId}`;
         grades.set(grade.questionId, grade);
         for (const child of grade.results ?? []) grades.set(child.questionId, child);
       }

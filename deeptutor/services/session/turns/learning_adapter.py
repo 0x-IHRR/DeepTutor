@@ -166,13 +166,11 @@ class LearningTurnAdapter:
                 question_id,
                 exc_info=True,
             )
-            if answers is not None:
-                await self._publish_mastery_group_rejection(execution, question_id)
+            await self._publish_mastery_group_rejection(execution, question_id)
             return None
         payload = (result.metadata or {}).get("mastery_grade")
         if not result.success or not isinstance(payload, dict):
-            if answers is not None:
-                await self._publish_mastery_group_rejection(execution, question_id)
+            await self._publish_mastery_group_rejection(execution, question_id)
             return None
         # One complete trace group, the same shape the dispatcher emits for a
         # tool the model called: a lone result with no terminal status renders

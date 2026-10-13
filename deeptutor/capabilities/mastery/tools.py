@@ -93,6 +93,7 @@ if TYPE_CHECKING:
 # Tool names the pipeline mounts together when a mastery path is active. Kept
 # here so the mount policy and the registration list can't disagree.
 MASTERY_TOOL_NAMES: tuple[str, ...] = (
+    "mastery_prepare_lesson",
     "mastery_status",
     "mastery_quiz",
     "mastery_note_explained",
@@ -419,6 +420,7 @@ async def _sync_qualitative_to_question_bank(
     evidence: str,
     material_title: str = "",
     quality: float | None = None,
+    result: str = "",
 ) -> None:
     if not session_id:
         return
@@ -436,7 +438,7 @@ async def _sync_qualitative_to_question_bank(
         question_type="written",
         user_answer=evidence,
         is_correct=passed,
-        result="correct" if passed else "partial",
+        result=result or ("correct" if passed else "partial"),
         source="mastery_path",
         assessment_type="qualitative",
         material_id=path_id,
@@ -1174,6 +1176,13 @@ class MasteryQuizTool(BaseTool):
                 return ToolResult(content=str(exc), success=False)
         from deeptutor.learning.service import MasteryInteractionError
 
+        if pending is not None:
+            from deeptutor.learning.lesson_evidence import LessonUnavailable
+            from deeptutor.learning.semantic_assessment import AssessmentUnavailable, bind_questions
+            try:
+                await bind_questions(service.store, progress, pending.questions or [pending])
+            except (AssessmentUnavailable, LessonUnavailable) as exc:
+                return ToolResult(content=str(exc), success=False)
         try:
             progress, interaction, created = service.register_question(
                 path_id,
@@ -1282,6 +1291,7 @@ class MasteryQuizTool(BaseTool):
             leaf_fields = {
                 "question_id", "knowledge_point_id", "is_correct", "learner_answer",
                 "correct_label", "correct_body", "explanation", "result", "independent", "diagnosis",
+                "final", "needs_clarification", "feedback", "confidence",
             }
             result["results"] = [
                 {key: value for key, value in leaf.items() if key in leaf_fields}
@@ -1381,7 +1391,7 @@ class MasteryGradeTool(BaseTool):
             name="mastery_grade",
             description=(
                 "Grade the learner's answer to the question you registered with "
-                "mastery_quiz. Grading is deterministic against the stored "
+                "mastery_quiz. Exact answers use the stored key and other answers receive semantic assessment against the stored "
                 "expected answer; this updates mastery, advances spaced "
                 "repetition, and tells you whether the objective's gate is now "
                 "cleared. Then give the learner feedback."
@@ -1422,7 +1432,7 @@ class MasteryGradeTool(BaseTool):
             return _no_path_result()
         from deeptutor.learning.scheduler import SpacedRepetitionScheduler
 
-        answer = str(kwargs.get("answer") or "")
+        answer = str(kwargs.get("_learner_message") if "_learner_message" in kwargs else kwargs.get("answer") or "")
         service = _new_service()
         scheduler = SpacedRepetitionScheduler()
         submitted_question_id = str(kwargs.get("question_id") or "").strip()
@@ -1478,7 +1488,7 @@ class MasteryGradeTool(BaseTool):
         from deeptutor.learning.service import MasteryInteractionError
 
         try:
-            progress, interaction, replayed = service.grade_interaction(
+            progress, interaction, replayed = await service.grade_interaction_semantic(
                 path_id,
                 answer=answer,
                 question_id=submitted_question_id,
@@ -1503,7 +1513,7 @@ class MasteryGradeTool(BaseTool):
                 success=False,
             )
         pending = interaction.question
-        is_correct = bool(interaction.result.get("is_correct"))
+        is_correct = interaction.result.get("is_correct")
         # Upsert on every call, including an idempotent replay: if the first
         # best-effort sync timed out, a safe retry repairs the auxiliary
         # question bank without duplicating the mastery attempt.
@@ -1594,11 +1604,15 @@ class MasteryGradeTool(BaseTool):
                 else "",
                 choice_options=choice_options,
                 explanation=(
-                    str(interaction.result.get("diagnosis"))
+                    str(interaction.result.get("feedback") or interaction.result.get("diagnosis") or "")
                     if interaction.result.get("result") == "ungraded"
                     else pending.explanation
                 ),
                 result=str(interaction.result.get("result") or ""),
+                final=interaction.result.get("final", True),
+                needs_clarification=interaction.result.get("needs_clarification", False),
+                feedback=interaction.result.get("feedback", ""),
+                confidence=interaction.result.get("confidence"),
                 independent=interaction.result.get("independent")
                 if pending.visual_context
                 else None,
@@ -1621,8 +1635,16 @@ class MasteryGradeTool(BaseTool):
         from deeptutor.learning.service import MasteryInteractionError
 
         path_id = _resolve_path_id(kwargs)
+        current = service.store.get_interaction(path_id, pending.question_id)
+        submitted = kwargs.get("answers")
+        if isinstance(submitted, dict) and "_learner_message" in kwargs:
+            actual = str(kwargs.get("_learner_message") or "")
+            if any(value != (current.answers.get(key) if current else None) and
+                   (not isinstance(value, str) or value not in actual)
+                   for key, value in submitted.items()):
+                return ToolResult(content="Use the learner's actual committed answers verbatim.", success=False)
         try:
-            progress, interaction, replayed = service.grade_interaction(
+            progress, interaction, replayed = await service.grade_interaction_semantic(
                 path_id,
                 answer="",
                 question_id=str(kwargs.get("question_id") or pending.question_id),
@@ -1698,10 +1720,10 @@ class MasteryAssessTool(BaseTool):
         return ToolDefinition(
             name="mastery_assess",
             description=(
-                "Record your judgement of a CONCEPT or DESIGN objective after the "
+                "Assess a CONCEPT or DESIGN objective after the "
                 "learner explains it in their own words (a Feynman-style check). "
-                "Pass passed=true only when the explanation is correct and "
-                "complete enough to count as mastery — this is the gate for these "
+                "The server evaluates the actual learner explanation against the objective and current sources; "
+                "a model-supplied pass flag cannot grant mastery. This is the gate for these "
                 "objective types. For MEMORY / PROCEDURE objectives use "
                 "mastery_quiz + mastery_grade instead."
             ),
@@ -1714,12 +1736,13 @@ class MasteryAssessTool(BaseTool):
                 ToolParameter(
                     name="passed",
                     type="boolean",
-                    description="True if the explanation demonstrates mastery.",
+                    description="Deprecated compatibility hint; ignored. The actual learner explanation is assessed by the server.",
+                    required=False,
                 ),
                 ToolParameter(
                     name="feedback",
                     type="string",
-                    description="Short note on what was strong or missing (stored as evidence).",
+                    description="Optional teaching note; does not replace the actual learner explanation or the server verdict.",
                     required=False,
                 ),
             ],
@@ -1737,8 +1760,7 @@ class MasteryAssessTool(BaseTool):
         kp_id = str(kwargs.get("knowledge_point_id") or "").strip()
         if not kp_id:
             return ToolResult(content="mastery_assess needs a knowledge_point_id.", success=False)
-        passed = bool(kwargs.get("passed"))
-        feedback = str(kwargs.get("feedback") or "").strip()
+        learner_answer = str(kwargs.get("_learner_message") or "").strip()
 
         service = _new_service()
         progress = _load_path(service, path_id)
@@ -1764,17 +1786,20 @@ class MasteryAssessTool(BaseTool):
         from deeptutor.learning.service import MasteryInteractionError
 
         try:
-            progress = service.record_qualitative_for_path(
+            progress, receipt = await service.assess_qualitative_semantic(
                 path_id,
                 kp_id,
-                passed=passed,
-                evidence=feedback,
+                learner_answer=learner_answer,
                 scheduler=SpacedRepetitionScheduler(),
                 session_id=_resolve_session_id(kwargs),
                 turn_id=_resolve_turn_id(kwargs),
             )
         except MasteryInteractionError as exc:
             return ToolResult(content=str(exc), success=False)
+        if not receipt["final"]:
+            return _json_result({"knowledge_point_id":kp_id, **receipt}, meta_key="mastery_assess")
+        passed = receipt["result"] == "correct"
+        feedback = receipt["feedback"]
         kp, _, _ = find_knowledge_point(progress, kp_id)
         assert kp is not None
         await _sync_qualitative_to_question_bank(
@@ -1784,13 +1809,16 @@ class MasteryAssessTool(BaseTool):
             knowledge_point_id=kp_id,
             knowledge_point_name=kp.name,
             passed=passed,
-            evidence=feedback,
+            evidence=learner_answer,
+            result=receipt["result"],
+            quality={"correct": 1.0, "partial": .5, "incorrect": 0.0}[receipt["result"]],
             material_title=progress.name,
         )
         payload = {
             "knowledge_point_id": kp_id,
             "path_revision": progress.version,
             "passed": passed,
+            **receipt,
             "mastered": is_mastered(progress, kp),
             "mastery": round(display_mastery(progress, kp), 3),
             "next": next_objective(progress).to_dict(),
@@ -1901,7 +1929,7 @@ class MasteryRepairQuestionTool(BaseTool):
         if _load_path(service, path_id) is None:
             return _no_built_path_result("mastery_repair_question")
         try:
-            progress, details = service.repair_question(
+            progress, details = await service.repair_question_semantic(
                 path_id,
                 str(kwargs.get("question_id") or "").strip(),
                 action=str(kwargs.get("action") or ""),
@@ -1936,14 +1964,16 @@ class MasteryRepairQuestionTool(BaseTool):
                 turn_id=details["turn_id"],
                 pending=pending,
                 user_answer=details["user_answer"],
-                is_correct=False if details["action"] == "void" else bool(details["is_correct"]),
-                result="voided" if details["action"] == "void" else "",
+                is_correct=False if details["action"] == "void" else details["is_correct"],
+                result="voided" if details["action"] == "void" else details.get("result", ""),
                 choice_options=details["options"] or None,
                 correct_answer=details["expected_answer"],
                 section_title=section_title or (kp.name if kp is not None else ""),
             )
         payload = {
             "status": "repaired",
+            "result": details.get("result", ""),
+            "feedback": details.get("feedback", ""),
             "action": details["action"],
             "question_id": details["question_id"],
             "knowledge_point_id": details["knowledge_point_id"],
@@ -3157,3 +3187,44 @@ __all__ = [
     "MasteryStatusTool",
     "MasterySwitchTool",
 ]
+
+
+class MasteryPrepareLessonTool(BaseTool):
+    """Demand-driven preparation; the loop only delivers validated cached pages."""
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(name="mastery_prepare_lesson",
+            description="Prepare source evidence for the next teaching or practice step within an objective. Reuses validated evidence. A partial packet supports teaching only its covered material; use a specific focus to resolve the evidence needed for a question and its key. For requested exam questions, focus on actual questions and solutions in the selected question bank, not merely topic summaries. Administrative discussion does not require preparation. Uses only the path's selected materials.",
+            parameters=[
+                ToolParameter(name="knowledge_point_id", type="string", description="Stable objective ID from mastery_status."),
+                ToolParameter(name="focus", type="string", required=False,
+                    description="Optional next teaching step or assessment task within this objective, at most 600 characters. Include the requested source/task when relevant. Do not widen the objective or invent examination requirements."),
+                ToolParameter(name="refresh", type="boolean", required=False,
+                    description="Explicit targeted retry of this focus after new retrieval information or a learner request to retry. Do not repeat unchanged preparation on every model round."),
+            ])
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        from deeptutor.learning.lesson_evidence import (
+            LessonUnavailable,
+            lesson_context,
+            prepare_lesson,
+            public_sources,
+        )
+        from deeptutor.services.llm.config import get_llm_config
+
+        service = _new_service()
+        path_id = _resolve_path_id(kwargs)
+        if not path_id:
+            return _no_path_result()
+        try:
+            evidence = await prepare_lesson(service.store, path_id, str(kwargs.get("knowledge_point_id") or ""),
+                                            get_llm_config(), focus=kwargs.get("focus") or "",
+                                            learner_request=str(kwargs.get("_learner_message") or "")[:1500],
+                                            refresh=kwargs.get("refresh", False))
+        except LessonUnavailable as exc:
+            return ToolResult(content=str(exc), success=False)
+        bind = kwargs.get("_bind_lesson_objective")
+        if callable(bind):
+            bind(str(kwargs.get("knowledge_point_id") or ""))
+        return ToolResult(content=lesson_context(evidence) if evidence else "This objective has no selected PDF materials.",
+                          sources=public_sources(evidence))

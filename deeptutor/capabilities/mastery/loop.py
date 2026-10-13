@@ -305,7 +305,7 @@ class MasteryLoopCapability:
             updated["_mastery_session_mode"] = context.metadata.get("mastery_session_mode")
             updated["_session_id"] = str(context.session_id or "").strip()
             updated["_turn_id"] = str(context.metadata.get("turn_id") or "").strip()
-            if tool_name == "mastery_quiz":
+            if tool_name in {"mastery_quiz", "mastery_grade", "mastery_assess", "mastery_prepare_lesson"}:
                 # A replacement needs a quote from the actual current learner
                 # request, not a model-supplied claim about their intention.
                 updated["_learner_message"] = context.user_message or ""
@@ -562,13 +562,18 @@ class MasteryLoopCapability:
         if not isinstance(grade, dict) or not grade:
             return ""
         result = grade.get("result") if isinstance(grade.get("result"), dict) else {}
+        def verdict(item):
+            typed = item.get("result")
+            return typed if isinstance(typed, str) and typed in {"correct", "partial", "incorrect", "ungraded"} else (
+                "ungraded" if item.get("is_correct") is None else "correct" if item.get("is_correct") else "incorrect"
+            )
         results = result.get("results")
         if isinstance(results, list) and results:
             parts = [
                 f"{item.get('question_id', '')}: "
-                f"{'ungraded' if item.get('is_correct') is None else ('correct' if item.get('is_correct') else 'incorrect')}; "
+                f"{verdict(item)}; final={item.get('final', True)}; "
                 f"objective {item.get('knowledge_point_id', '')}; "
-                f"mastered={bool(item.get('mastered'))}"
+                f"mastered={bool(item.get('mastered'))}; feedback={item.get('feedback', '')}"
                 for item in results
                 if isinstance(item, dict)
             ]
@@ -577,30 +582,32 @@ class MasteryLoopCapability:
                 "The question group was already graded by the engine. "
                 if complete else
                 "Only the submitted group replies were graded by the engine. "
-                "These children remain unanswered: "
+                "These children still need an answer or clarification: "
                 + ", ".join(result.get("remaining_question_ids", [])) + ". "
-                "Preserve unanswered children and continue at the requested pace. "
+                "Preserve final siblings. Clarify nonfinal replies and then assess the learner's explicit revision. "
                 "Explain reported gaps, but never infer confusion from an unanswered "
                 "item or invent its reply. "
             )
             return (
                 "[Mastery] " + status +
-                "Do not grade it again or repeat its answer keys. Each result belongs "
+                "Do not regrade final replies or repeat their answer keys. Each result belongs "
                 "only to its own objective; the parent group gives no extra credit. "
                 "Address the specific gap, then use the fresh status for the next step.\n"
                 + "\n".join(parts)
             )
-        verdict = "correct" if grade.get("is_correct") else "incorrect"
+        outcome = verdict({**result, "is_correct": result.get("is_correct", grade.get("is_correct"))})
         learner_answer = str(result.get("learner_answer") or "").strip()
         lines = [
             "[Mastery] The learner answered the open question on its card and the "
-            f"engine has already graded it: {verdict}"
+            f"engine reports: {outcome}"
             + (f' (they answered "{learner_answer}")' if learner_answer else "")
             + ".",
-            "Their card already shows the verdict, the correct option and the "
-            "explanation the question was registered with, so do not restate the "
-            "answer key and do not call mastery_grade for it again.",
+            str(result.get("feedback") or ""),
         ]
+        if result.get("final") is False or outcome == "ungraded":
+            lines.append("This is not a final grade and created no mastery penalty. Ask for the needed clarification, preserve the same question, and assess an explicit revised learner answer. Do not infer a wrong answer or replace this question automatically.")
+            return "\n".join(line for line in lines if line)
+        lines.append("The engine already graded this reply; do not call mastery_grade. The card shows the saved final result. Do not repeat the answer key or grade this reply again.")
         if grade.get("mastered"):
             lines.append(
                 "This cleared the objective's gate. Say what the attempt showed, "

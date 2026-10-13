@@ -42,6 +42,52 @@ const event = (payload: Record<string, unknown>): StreamEvent => ({
 const question = () => extractMasteryQuestion([event({ mastery_question: group })])!;
 
 describe("grouped mastery assessment", () => {
+  it("reopens a single clarification reply after a grading failure without losing its text", async () => {
+    const user = userEvent.setup();
+    const posed = { id: 1, role: "assistant" as const, content: "", parentMessageId: null,
+      capability: "mastery_path", events: [event({ mastery_question: leaf("part-b") })] };
+    const uncertain = event({ mastery_grade: { result: { question_id: "part-b",
+      result: "ungraded", final: false, is_correct: null, learner_answer: "Unclear" } } });
+    const conversation = (rejected: boolean) => <ChatMessageList messages={[posed,
+      { id: 2, role: "assistant", content: "", parentMessageId: 1, capability: "mastery_path",
+        events: [uncertain, ...(rejected ? [event({ mastery_answer_rejected: { question_id: "part-b" } })] : [])] }]}
+      isStreaming={false} onCopyAssistantMessage={async () => undefined}
+      onRegenerateMessage={() => undefined} onAnswerMasteryQuestion={() => true} />;
+    const { rerender } = render(conversation(false));
+    await user.clear(screen.getByRole("textbox"));
+    await user.type(screen.getByRole("textbox"), "Explicit revised explanation");
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
+    rerender(conversation(true));
+    expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
+    expect(screen.getByRole("textbox")).toHaveValue("Explicit revised explanation");
+  });
+
+  it("keeps uncertain leaves editable while final siblings stay locked", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn(() => true);
+    const grade = collectMasteryGrades([{ events: [event({ mastery_grade: { result: {
+      question_id: "group-1", question_type: "group", complete: false, final: false,
+      results: [
+        { question_id: "part-a", result: "correct", final: true, is_correct: true, learner_answer: "A" },
+        { question_id: "part-b", result: "ungraded", final: false, needs_clarification: true,
+          is_correct: null, learner_answer: "Unclear", feedback: "Please explain the connection." },
+      ],
+    } } })] }]).get("group-1")!;
+    render(<MasteryQuestionCard question={question()} grade={grade} answered={false}
+      submittedAnswer="" onSubmit={onSubmit} />);
+    expect(screen.getByRole("button", { name: /Matching description/ })).toBeDisabled();
+    expect(screen.getByRole("textbox")).toBeEnabled();
+    expect(screen.getByRole("textbox")).toHaveValue("Unclear");
+    expect(screen.getByText("Please explain the connection.")).toBeInTheDocument();
+    await user.clear(screen.getByRole("textbox"));
+    await user.type(screen.getByRole("textbox"), "The connection is causal");
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      answers: [{ questionId: "part-b", text: "The connection is causal" }],
+    }));
+  });
+
   it("normalizes two independent questions and drops private keys", () => {
     const normalized = question();
     expect(normalized).toMatchObject({

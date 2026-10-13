@@ -126,12 +126,13 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
   onChallenge, groupInput, rejectionKey,
 }: MasteryQuestionCardProps & { groupInput?: GroupInput }) {
   const { t } = useTranslation();
-  const [picked, setPicked] = useState<string>("");
+  const [picked, setPicked] = useState<string>(() => grade?.final === false ? grade.learnerAnswer : "");
   const [skipping, setSkipping] = useState(false);
   const [sourceUnavailable, setSourceUnavailable] = useState(false);
-  const [freeText, setFreeText] = useState("");
+  const [freeText, setFreeText] = useState(() => grade?.final === false ? grade.learnerAnswer : "");
   const [freeSelected, setFreeSelected] = useState(false);
-  const { sending, failed: sendFailed, submit } = useCardSubmission(onSubmit, rejectionKey);
+  const acknowledgementKey = grade ? grade.receiptKey ?? JSON.stringify(grade) : undefined;
+  const { sending, failed: sendFailed, submit } = useCardSubmission(onSubmit, rejectionKey, acknowledgementKey);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -143,7 +144,7 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
   const answer = usesFreeText ? freeText.trim() : picked;
   // Skipping settles the card exactly as answering does: the engine closed the
   // question, so there is nothing left on it to send.
-  const settled = answered || skipped === true;
+  const settled = (answered && grade?.final !== false) || skipped === true;
   const ungraded = grade?.result === "ungraded";
   const locked = settled || sending || skipping || groupInput?.locked === true;
 
@@ -286,7 +287,7 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
                   : "text-[var(--destructive)]")
               }
             >
-              {ungraded ? t("Ungraded — mastery unchanged") : grade.isCorrect ? t("Correct") : t("Not quite")}
+              {ungraded ? t("Ungraded — mastery unchanged") : grade.result === "partial" ? t("Partially correct") : grade.isCorrect ? t("Correct") : t("Not quite")}
             </span>
             {!ungraded && !grade.isCorrect && grade.correctLabel ? (
               <span className="text-[var(--foreground)]">
@@ -300,6 +301,7 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
               <InlineMarkdown content={grade.explanation} />
             </div>
           ) : null}
+          {grade.feedback && grade.feedback !== grade.explanation && <div className="mt-1 text-[12.5px]"><InlineMarkdown content={grade.feedback} /></div>}
           {onChallenge && <button type="button" className="mt-2 text-xs underline" onClick={() => onChallenge(question.questionId)}>{t("Review or challenge this assessment")}</button>}
         </div>
       ) : null}
@@ -368,11 +370,11 @@ function GroupedMasteryQuestionCard({
   const [skipping, setSkipping] = useState(false);
   const [skipFailed, setSkipFailed] = useState(false);
   const questions = question.questions ?? [];
-  const acknowledgementKey = grade ? JSON.stringify((grade.results ?? []).map((part) => part.questionId)) : undefined;
+  const acknowledgementKey = grade ? grade.receiptKey ?? JSON.stringify(grade.results ?? []) : undefined;
   const { sending, failed, submit } = useCardSubmission(onSubmit, rejectionKey, acknowledgementKey);
-  const settled = answered || (Boolean(grade) && grade?.complete !== false) || skipped === true;
+  const settled = ((answered || Boolean(grade)) && grade?.complete !== false && grade?.final !== false) || skipped === true;
   const locked = settled || sending || skipping;
-  const remaining = questions.filter((part) => !grade?.results?.some((result) => result.questionId === part.questionId));
+  const remaining = questions.filter((part) => !grade?.results?.some((result) => result.questionId === part.questionId && result.final !== false));
   const drafted = remaining.filter((part) => Boolean(answers[part.questionId]?.text));
   const ready = questions.length >= 2 && drafted.length > 0 && drafted.every((part) => answers[part.questionId]?.available);
 
@@ -407,7 +409,7 @@ function GroupedMasteryQuestionCard({
     {questions.map((part) => {
       const partGrade = grade?.results?.find((result) => result.questionId === part.questionId) ?? null;
       return <SingleMasteryQuestionCard key={part.questionId} question={part} grade={partGrade}
-        answered={settled || Boolean(partGrade)} skipped={skipped} submittedAnswer={partGrade?.learnerAnswer ?? ""}
+        answered={settled || (Boolean(partGrade) && partGrade?.final !== false)} skipped={skipped} submittedAnswer={partGrade?.learnerAnswer ?? ""}
         onSubmit={onSubmit} onChallenge={onChallenge} groupInput={{ locked, onChange: updateAnswer }} />;
     })}
     {!settled ? <div className="mt-3 flex items-center justify-between gap-3">

@@ -173,11 +173,15 @@ def test_group_seed_reads_real_nested_results_and_keeps_unknown_neutral():
 
 
 @pytest.mark.asyncio
-async def test_rejected_group_answer_emits_card_recovery_event(monkeypatch):
+@pytest.mark.parametrize("grouped", [False, True])
+@pytest.mark.parametrize("failure", ["rejected", "exception", "missing_receipt"])
+async def test_rejected_group_answer_emits_card_recovery_event(monkeypatch, grouped, failure):
     published = []
 
     async def grade(self, **kwargs):
-        return SimpleNamespace(success=False, content="invalid answers", metadata={})
+        if failure == "exception":
+            raise RuntimeError("assessment provider unavailable")
+        return SimpleNamespace(success=failure == "missing_receipt", content="invalid answers", metadata={})
 
     async def publish(execution, event):
         published.append(event)
@@ -192,7 +196,7 @@ async def test_rejected_group_answer_emits_card_recovery_event(monkeypatch):
         answer={
             "question_id": "group",
             "text": "display",
-            "answers": {"first": "A", "second": "B"},
+            **({"answers": {"first": "A", "second": "B"}} if grouped else {}),
         },
     )
     assert result is None
