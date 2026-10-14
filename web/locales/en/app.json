@@ -5505,5 +5505,12 @@
   "No durable indexing run recorded yet.": "No durable indexing run recorded yet.",
   "Approve this MCP origin for private-network connections": "Approve this MCP origin for private-network connections",
   "Use an administrator-approved private MCP origin": "Use an administrator-approved private MCP origin",
-  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked."
+  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.",
+  "Workspace instructions": "Workspace instructions",
+  "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.": "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.",
+  "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.",
+  "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.",
+  "Clear instructions": "Clear instructions",
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} characters",
+  "contextBudget.segment.workspace_instructions": "Workspace instructions"
 }

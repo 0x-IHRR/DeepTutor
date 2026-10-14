@@ -5505,5 +5505,12 @@
   "No durable indexing run recorded yet.": "Noch kein dauerhafter Indexierungslauf aufgezeichnet.",
   "Approve this MCP origin for private-network connections": "Diesen MCP-Ursprung für private Netzwerkverbindungen freigeben",
   "Use an administrator-approved private MCP origin": "Einen administrativ freigegebenen privaten MCP-Ursprung verwenden",
-  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Nur dieses Schema, dieser Host und Port dürfen private Docker- oder LAN-Adressen verwenden. Metadatenadressen bleiben gesperrt."
+  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Nur dieses Schema, dieser Host und Port dürfen private Docker- oder LAN-Adressen verwenden. Metadatenadressen bleiben gesperrt.",
+  "Workspace instructions": "Arbeitsbereichsanweisungen",
+  "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.": "Lege Lernziele, Lehrstil und Antwortpräferenzen für diesen Arbeitsbereich fest. Leer lassen, um das Standardverhalten zu verwenden.",
+  "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "Beispiel: Ich lerne lineare Algebra. Erkläre zuerst die geometrische Intuition, dann die Formeln, und gib Hinweise vor vollständigen Lösungen.",
+  "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Gilt für Chat, Problemlösung, Rückfragen, geführtes Lernen, Lesen, Kurslernen und Standardvisualisierungen. Änderungen gelten ab der nächsten Runde.",
+  "Clear instructions": "Anweisungen leeren",
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} Zeichen",
+  "contextBudget.segment.workspace_instructions": "Arbeitsbereichsanweisungen"
 }
