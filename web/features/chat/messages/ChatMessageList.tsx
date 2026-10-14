@@ -391,12 +391,14 @@ function buildMessageBlocks(
   const teaching = new Set<number>();
   const preserveTeachingBefore = (index: number) => {
     let before = index - 1;
+    while (before >= 0 && segments[before].kind === "trace") before -= 1;
     // Later tool work cannot demote an already-written lesson into working
-    // notes. Other cards delimit the exchange; trace remains internal work.
+    // notes in a Mastery turn. Ordinary chat preserves only the immediate
+    // introduction to its question, keeping earlier exploration folded.
     while (before >= 0) {
       const preceding = segments[before];
       if (preceding.kind === "text") teaching.add(before);
-      else if (preceding.kind !== "trace") break;
+      else if (!isMastery || preceding.kind !== "trace") break;
       before -= 1;
     }
   };
