@@ -12409,6 +12409,8 @@ export interface components {
     };
     /** CreateWorkspacePayload */
     readonly CreateWorkspacePayload: {
+      /** Instructions */
+      readonly instructions?: string | null;
       /** Name */
       readonly name: string;
       /** Path */
@@ -16627,6 +16629,8 @@ export interface components {
     readonly UpdateWorkspacePayload: {
       /** Archived */
       readonly archived?: boolean | null;
+      /** Instructions */
+      readonly instructions?: string | null;
       /** Name */
       readonly name?: string | null;
       readonly resources?: components["schemas"]["WorkspaceResources"] | null;

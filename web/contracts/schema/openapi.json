@@ -2849,6 +2849,18 @@
       },
       "CreateWorkspacePayload": {
         "properties": {
+          "instructions": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          },
           "name": {
             "maxLength": 100,
             "minLength": 1,
@@ -12269,6 +12281,18 @@
               }
             ],
             "title": "Archived"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
           },
           "name": {
             "anyOf": [
