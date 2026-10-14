@@ -5521,5 +5521,12 @@
   "No durable indexing run recorded yet.": "Збереженого запису про запуск індексації поки немає.",
   "Approve this MCP origin for private-network connections": "Схвалити це джерело MCP для з'єднань із приватною мережею",
   "Use an administrator-approved private MCP origin": "Використовувати приватне джерело MCP, схвалене адміністратором",
-  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Лише ця схема, хост і порт можуть використовувати приватні адреси Docker або локальної мережі. Адреси метаданих залишаються заблокованими."
+  "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Лише ця схема, хост і порт можуть використовувати приватні адреси Docker або локальної мережі. Адреси метаданих залишаються заблокованими.",
+  "Workspace instructions": "Інструкції робочого простору",
+  "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.": "Укажіть навчальні цілі, стиль викладання та вподобання щодо відповідей для цього робочого простору. Залиште порожнім для стандартної поведінки.",
+  "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "Наприклад: я вивчаю лінійну алгебру. Спочатку пояснюйте геометричну інтуїцію, потім формули; давайте підказки перед повними розв’язаннями.",
+  "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Застосовується до чату, розв’язування, запитань, керованого навчання, читання, курсів і стандартних візуалізацій. Зміни діють із наступного ходу.",
+  "Clear instructions": "Очистити інструкції",
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} символів",
+  "contextBudget.segment.workspace_instructions": "Інструкції робочого простору"
 }
