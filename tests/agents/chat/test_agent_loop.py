@@ -2513,12 +2513,10 @@ async def test_cold_start_stalled_provider_settles_with_bounded_retries(monkeypa
         assert failure.value.partial_response is (phase == "partial_stream")
         if phase != "connect":
             assert len(stopped) == len(attempts)
-        assert (
-            sum(event.metadata.get("error_code") == "provider_transport" for event in events) >= 1
-        )
     finally:
         await bus.close()
         await consumer
+    assert sum(event.metadata.get("error_code") == "provider_transport" for event in events) >= 1
 
 
 @pytest.mark.asyncio
