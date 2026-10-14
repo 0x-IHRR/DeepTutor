@@ -8413,6 +8413,19 @@
             ],
             "default": null,
             "title": "Selection"
+          },
+          "time_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Time Seconds"
           }
         },
         "title": "ReadingViewport",
