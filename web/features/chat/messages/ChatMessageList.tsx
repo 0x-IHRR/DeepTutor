@@ -643,6 +643,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   onSubmitUserReply,
   onAnswerMasteryQuestion,
   onSkipMasteryQuestion,
+  onChallengeMasteryQuestion,
   researchRequestSnapshot,
   onTraceToggle,
   masteryGrades,
@@ -710,6 +711,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   onSkipMasteryQuestion?: (
     questionId: string,
   ) => void | boolean | Promise<void | boolean>;
+  onChallengeMasteryQuestion?: (questionId: string) => void | boolean | Promise<void | boolean>;
 }) {
   const { t } = useTranslation();
   const events = useMemo(() => msg.events ?? [], [msg.events]);
@@ -819,6 +821,7 @@ export const AssistantMessage = memo(function AssistantMessage({
               : false
           }
           onSkip={onSkipMasteryQuestion}
+          onChallenge={onChallengeMasteryQuestion}
         />
       );
     },
@@ -827,6 +830,7 @@ export const AssistantMessage = memo(function AssistantMessage({
       masterySkips,
       onAnswerMasteryQuestion,
       onSkipMasteryQuestion,
+  onChallengeMasteryQuestion,
     ],
   );
   // Set by ``request_credential`` when a configuration step needs a secret the
@@ -1923,6 +1927,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   onSubmitUserReply,
   onAnswerMasteryQuestion,
   onSkipMasteryQuestion,
+  onChallengeMasteryQuestion,
   showModeBadge = true,
   onLoadMessageTrace,
   onReleaseMessageTrace,
@@ -1979,6 +1984,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   onSkipMasteryQuestion?: (
     questionId: string,
   ) => void | boolean | Promise<void | boolean>;
+  onChallengeMasteryQuestion?: (questionId: string) => void | boolean | Promise<void | boolean>;
   /** Names of KBs confirmed to exist. Omitted when the KB list is unavailable. */
   availableKbNames?: Set<string>;
   /** Qualified KB ref -> display name, from the same catalog the composer
@@ -2314,6 +2320,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                 onSubmitUserReply={onSubmitUserReply}
                 onAnswerMasteryQuestion={onAnswerMasteryQuestion}
                 onSkipMasteryQuestion={onSkipMasteryQuestion}
+                onChallengeMasteryQuestion={onChallengeMasteryQuestion}
                 researchRequestSnapshot={
                   pairedUserMessage?.requestSnapshot ?? null
                 }
