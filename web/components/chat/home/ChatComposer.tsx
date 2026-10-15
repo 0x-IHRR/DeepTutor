@@ -99,6 +99,7 @@ import type { CapabilityDef } from "@/features/capabilities/presentation";
 import AttachmentProcessingStatus from "./AttachmentProcessingStatus";
 import type { AttachmentProcessingItem } from "@/features/chat/selectors/attachment-processing";
 import Tooltip from "@/shared/ui/Tooltip";
+import { useCapabilityLabel } from "@/features/ui-layout/tokens";
 
 interface PendingAttachment {
   type: string;
@@ -125,6 +126,7 @@ function CapMenuItem({
   onSelect: (value: string) => void;
 }) {
   const { t } = useTranslation();
+  const capabilityLabel = useCapabilityLabel();
 
   const Icon = cap.icon;
   return (
@@ -142,7 +144,7 @@ function CapMenuItem({
       />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[12.5px] font-medium leading-snug text-[var(--foreground)]">
-          {t(cap.label)}
+          {capabilityLabel(cap)}
         </div>
         <div className="truncate text-[11px] leading-snug text-[var(--muted-foreground)]">
           {t(cap.description)}
@@ -476,6 +478,7 @@ export default memo(function ChatComposer({
   showCapabilityChip?: boolean;
 }) {
   const { t } = useTranslation();
+  const capabilityLabel = useCapabilityLabel();
   const [partners, setPartners] = useState<PartnerInfo[]>([]);
   const [partnersLoading, setPartnersLoading] = useState(false);
   const [partnerLoadError, setPartnerLoadError] = useState(false);
@@ -1077,7 +1080,7 @@ export default memo(function ChatComposer({
 
       <div className="relative">
         <div
-          className={`${styles.surface} relative rounded-[26px] border bg-[var(--card)] shadow-[0_1px_2px_rgba(0,0,0,0.025),0_10px_28px_-10px_rgba(0,0,0,0.08)] transition-colors ${
+          className={`${styles.surface} dt-composer-surface relative rounded-[26px] border bg-[var(--card)] shadow-[0_1px_2px_rgba(0,0,0,0.025),0_10px_28px_-10px_rgba(0,0,0,0.08)] transition-colors ${
             dragging
               ? "border-[var(--primary)] bg-[var(--primary)]/[0.03]"
               : "border-[var(--border)]/55"
@@ -1177,13 +1180,13 @@ export default memo(function ChatComposer({
               <div className={styles.context}>
                 {showCapabilityChip && (
                   <div className="relative min-w-0 max-w-full">
-                    <Tooltip label={t(activeCap.label)} suppressed={capMenuOpen} side="top">
+                    <Tooltip label={capabilityLabel(activeCap)} suppressed={capMenuOpen} side="top">
                       <button
                         ref={capBtnRef}
                         aria-haspopup="menu"
                         aria-expanded={capMenuOpen}
                         onClick={() => onSetCapMenuOpen((v) => !v)}
-                        aria-label={t(activeCap.label)}
+                        aria-label={capabilityLabel(activeCap)}
                         className={`inline-flex h-8 max-w-full items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
                           capMenuOpen
                             ? "bg-[var(--primary)]/10 text-[var(--primary)]"
@@ -1192,7 +1195,7 @@ export default memo(function ChatComposer({
                       >
                         <CapIcon size={16} strokeWidth={1.7} className="shrink-0" />
                         <span className="ml-1.5 inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap">
-                          <span className="min-w-0 truncate">{t(activeCap.label)}</span>
+                          <span className="min-w-0 truncate">{capabilityLabel(activeCap)}</span>
                           <ChevronDown size={13} strokeWidth={2} className={`shrink-0 transition-transform duration-200 ${capMenuOpen ? "rotate-180" : ""}`} />
                         </span>
                       </button>

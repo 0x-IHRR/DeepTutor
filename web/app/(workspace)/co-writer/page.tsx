@@ -183,6 +183,7 @@ export default function CoWriterHomePage() {
         }}
       />
         <PageHeader
+          icon={PenLine}
           title={t("Co-Writer")}
           description={t("Manage your markdown drafts and projects.")}
           action={

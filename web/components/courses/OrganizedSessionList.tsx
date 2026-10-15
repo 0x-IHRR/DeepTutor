@@ -67,6 +67,8 @@ interface OrganizedSessionListProps {
   workspaces?: ChatWorkspaceRegistration[];
   /** Account sidebar only; scoped lists already live within a workspace. */
   groupWorkspaces?: boolean;
+  /** Title the workspace groups as one "Projects" block (modern UI). */
+  workspaceHeading?: boolean;
   onNewWorkspaceChat?: (workspaceId: string) => void;
   /** Topics whose study conversations get their own group. Omit for none. */
   masteryTopics?: MasteryTopicLabel[];
@@ -111,6 +113,7 @@ export default function OrganizedSessionList({
   courses,
   workspaces = [],
   groupWorkspaces = false,
+  workspaceHeading = false,
   onNewWorkspaceChat,
   masteryTopics = [],
   readingCollections = [],
@@ -736,8 +739,8 @@ export default function OrganizedSessionList({
   return (
     <div className="py-0.5">
       {workspaceMoveError && <p role="alert" className="px-2 py-1 text-xs text-[var(--destructive)]">{workspaceMoveError}</p>}
-      {groupWorkspaces && entries.some(entry => entry.kind === "group" && entry.group === "workspace") && (
-        <h2 className="mb-1 px-1.5 py-1 text-[12.5px] font-medium text-[var(--foreground)]">
+      {groupWorkspaces && workspaceHeading && entries.some(entry => entry.kind === "group" && entry.group === "workspace") && (
+        <h2 className="dt-projects-heading">
           {t("navigation.projects")}
         </h2>
       )}

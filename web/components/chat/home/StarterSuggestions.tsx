@@ -6,6 +6,7 @@ import Tooltip from "@/shared/ui/Tooltip";
 import { Loader2, Sparkles } from "lucide-react";
 import { activeWorkspaceId, scopedUrl } from "@/lib/workspace-scope";
 import { apiFetch, apiUrl } from "@/lib/api";
+import { useUiLayoutLabel } from "@/features/ui-layout/tokens";
 
 interface Suggestion {
   /** The line the learner reads — names the specific thing worth doing next. */
@@ -76,6 +77,7 @@ export default function StarterSuggestions({
   workspaceId?: string;
 }) {
   const { t } = useTranslation();
+  const heading = useUiLayoutLabel("starterHeading");
   // Everything generated here is already in the learner's chosen output
   // language (resolved server-side from their model-output setting) and never
   // goes through the i18n table — a label that happened to match a key would
@@ -185,6 +187,7 @@ export default function StarterSuggestions({
     // the lines start exactly at the composer's left edge rather than floating
     // near it.
     <div className="group/starters mx-auto w-full max-w-[768px] px-6 pb-6 animate-fade-in">
+      {view.kind === "ready" && heading && <p className="dt-starter-heading">{heading}</p>}
       {view.kind === "ready" && (
         <ul className="flex flex-col items-start">
           {view.items.map((item) => (
@@ -195,7 +198,7 @@ export default function StarterSuggestions({
                   disabled={disabled}
                   onClick={() => onPick(item.prompt)}
                   aria-label={item.prompt}
-                  className="group/line flex max-w-full items-baseline gap-2 py-[5px] text-left font-serif text-[15.5px] leading-[1.45] tracking-[-0.005em] text-[color-mix(in_srgb,var(--foreground)_72%,transparent)] transition-colors duration-200 hover:text-[var(--primary)] focus-visible:text-[var(--primary)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                  className="dt-starter-line group/line flex max-w-full items-baseline gap-2 py-[5px] text-left font-serif text-[15.5px] leading-[1.45] tracking-[-0.005em] text-[color-mix(in_srgb,var(--foreground)_72%,transparent)] transition-colors duration-200 hover:text-[var(--primary)] focus-visible:text-[var(--primary)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <span className="truncate">{item.label}</span>
                   {/* The arrow is the invitation: coloured at rest so the line

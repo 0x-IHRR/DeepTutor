@@ -18,7 +18,7 @@ import { Dialog } from '@/shared/ui/Dialog'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer'
 import { MasteryQuestionCard } from '@/components/chat/home/MasteryQuestionCard'
 import type { MasteryGradeResult } from '@/lib/mastery-question'
-import { DASHBOARD_GROUPS } from '@/components/space/SpaceDashboard'
+import { DASHBOARD_GROUPS } from '@/components/space/dashboard-groups'
 import {
   learningKinds,
   type Collections,

@@ -1,24 +1,21 @@
 'use client'
 import { useTranslation } from 'react-i18next'
-import { NavigationRow, Status, matches } from './NavigationPrimitives'
+import { NavigationRow, Status } from './NavigationPrimitives'
+import { PartnerRoster } from './PartnerRoster'
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { Plus, ChevronDown, ChevronRight, Users, MessageCircle } from 'lucide-react'
-import Tooltip from '@/shared/ui/Tooltip'
-import PartnerAvatar from '@/components/partners/PartnerAvatar'
+import { Plus, ChevronDown, ChevronRight, Users } from 'lucide-react'
 import { usePartnerNavigation } from '@/hooks/usePartnerNavigation'
 import { partnerSessionHref } from '@/lib/navigation'
 
-export function PartnerNavigation({ query, active = true }: { query: string; active?: boolean }) {
+export function PartnerNavigation({ active = true }: { active?: boolean }) {
   const { t } = useTranslation()
   const search = useSearchParams()
   const pathname = usePathname()
   const { data, loading, error, retry } = usePartnerNavigation(active)
   const [limit, setLimit] = useState(30)
-  const partners = data.partners.filter(row => matches(row.name, query))
-  const groups = data.groups.filter(row => matches(row.name, query))
-  const sessions = data.sessions.filter(row => matches(`${row.title} ${row.owner_name}`, query))
+  const { partners, groups, sessions } = data
   return (
     <div className="dt-partner-navigation">
       <section className="dt-partner-preview" aria-labelledby="partner-preview-title">
@@ -43,42 +40,14 @@ export function PartnerNavigation({ query, active = true }: { query: string; act
               aria-label={t('New partner')}
               className="dt-nav-icon"
             >
-              <Plus size={16} />
+              <Plus size={15} strokeWidth={1.7} />
             </Link>
           </div>
         </div>
-        <div className="dt-partner-roster">
-          {partners.slice(0, 3).map(partner => {
-            const href = `/partners/${encodeURIComponent(partner.partner_id)}`
-            return (
-              <Tooltip
-                key={partner.partner_id}
-                label={partner.name}
-                side="right"
-                className="min-w-0"
-              >
-                <Link
-                  href={href}
-                  prefetch={false}
-                  className="dt-partner-roster-item"
-                  aria-current={pathname === href ? 'page' : undefined}
-                >
-                  <PartnerAvatar
-                    name={partner.name}
-                    emoji={partner.emoji}
-                    image={partner.avatar}
-                    color={partner.color}
-                    size={36}
-                  />
-                  <span>{partner.name}</span>
-                </Link>
-              </Tooltip>
-            )
-          })}
-        </div>
+        <PartnerRoster partners={partners} activeHref={pathname} />
         {!loading && !partners.length && (
           <p className="dt-navigation-empty">
-            {t(query ? 'navigation.noResults' : 'No partners yet')}
+            {t('No partners yet')}
           </p>
         )}
       </section>
@@ -104,7 +73,7 @@ export function PartnerNavigation({ query, active = true }: { query: string; act
                 href="/partners/groups/new"
                 aria-label={t('New group')}
               >
-                <Plus size={16} />
+                <Plus size={15} strokeWidth={1.7} />
               </Link>
             )}
           </div>
@@ -119,7 +88,7 @@ export function PartnerNavigation({ query, active = true }: { query: string; act
         ))}
         {!loading && !groups.length && (
           <p className="dt-navigation-empty">
-            {t(query ? 'navigation.noResults' : 'navigation.noGroups')}
+            {t('navigation.noGroups')}
           </p>
         )}
       </section>
@@ -145,7 +114,6 @@ export function PartnerNavigation({ query, active = true }: { query: string; act
                 href={href}
                 label={row.title || t('New conversation')}
                 detail={row.owner_name}
-                icon={MessageCircle}
                 active={
                   pathname === href.split('?')[0] && search.get('session') === row.session_key
                 }
@@ -154,7 +122,7 @@ export function PartnerNavigation({ query, active = true }: { query: string; act
           })}
           {!loading && !sessions.length && !error && (
             <p className="dt-navigation-empty">
-              {t(query ? 'navigation.noResults' : 'navigation.noSessions')}
+              {t('navigation.noSessions')}
             </p>
           )}
           {sessions.length > limit && (

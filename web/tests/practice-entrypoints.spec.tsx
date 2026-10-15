@@ -7,6 +7,7 @@ import * as api from "@/lib/practice-api";
 
 const replace = vi.fn();
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/learning/practice",
   useSearchParams: () => new URLSearchParams("course=course-a&workspace=work-a&view=mistakes"),
   useRouter: () => ({ replace }),
 }));

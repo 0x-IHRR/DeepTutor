@@ -4,24 +4,15 @@ import { useId, useState, startTransition, type ReactNode } from 'react'
 import dynamic from 'next/dynamic'
 import { usePathname, useRouter } from 'next/navigation'
 import { m, useReducedMotion } from 'framer-motion'
-import {
-  BookOpen,
-  Home,
-  Library,
-  MessageCircle,
-  Search,
-  Settings,
-  Columns3,
-  PenLine,
-  Bot,
-} from 'lucide-react'
+import { BookOpen, Home, Library, MessageCircle, Search, Columns3, PenLine, Bot } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import Tooltip from '@/shared/ui/Tooltip'
 import { categoryForPath, type NavigationCategory } from '@/lib/navigation'
 import { navVisibleUnderPolicy } from './nav-entries'
 import { useAuthStatus } from '@/hooks/useAuthStatus'
 import { navigateTask } from '@/lib/workspace-scope'
-import { NavigationRow, Section, matches } from './NavigationPrimitives'
+import { NavigationRow, Section } from './NavigationPrimitives'
+import { SHORTCUTS } from '@/lib/shortcuts'
 
 // Feature libraries load when their category opens, not in every workspace.
 const LearningNavigation = dynamic(() =>
@@ -52,23 +43,16 @@ export function useCategoryNavigation() {
     pathname: string
     category: NavigationCategory
   } | null>(null)
-  const [query, setQuery] = useState('')
-  const [searchOpen, setSearchOpen] = useState(false)
   const desired = selection?.pathname === pathname ? selection.category : categoryForPath(pathname)
   const category = categories.find(item => item.id === desired)?.id ?? categories[0]?.id ?? 'home'
   return {
     category,
     categories,
     visited,
-    query,
-    setQuery,
-    searchOpen,
-    setSearchOpen,
     select: (next: NavigationCategory) => {
       startTransition(() => {
         setVisited(previous => [...new Set([...previous, category, next])])
         setSelection({ pathname, category: next })
-        setQuery('')
       })
     },
     allowedSurfaces: learningPolicy?.allowedSurfaces ?? null,
@@ -76,7 +60,15 @@ export function useCategoryNavigation() {
 }
 type Navigation = ReturnType<typeof useCategoryNavigation>
 
-export function CategoryTabs({ nav, collapsed }: { nav: Navigation; collapsed: boolean }) {
+export function CategoryTabs({
+  nav,
+  collapsed,
+  onSearch,
+}: {
+  nav: Navigation
+  collapsed: boolean
+  onSearch: () => void
+}) {
   const { t } = useTranslation()
   const router = useRouter()
   const id = useId()
@@ -93,7 +85,14 @@ export function CategoryTabs({ nav, collapsed }: { nav: Navigation; collapsed: b
         aria-orientation={collapsed ? 'vertical' : 'horizontal'}
       >
         {nav.categories.map((item, index) => (
-          <Tooltip key={item.id} label={t(item.label)} side={collapsed ? 'right' : 'bottom'}>
+          <Tooltip
+            key={item.id}
+            label={t(item.label)}
+            side={collapsed ? 'right' : 'bottom'}
+            shortcut={SHORTCUTS.category(index)}
+            // The active tab already prints its name.
+            suppressed={!collapsed && nav.category === item.id}
+          >
             <button
               id={`category-${item.id}`}
               type="button"
@@ -132,42 +131,17 @@ export function CategoryTabs({ nav, collapsed }: { nav: Navigation; collapsed: b
                   transition={{ duration: reduced ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
                 />
               )}
-              <item.icon size={19} strokeWidth={1.65} />
+              <item.icon size={17} strokeWidth={1.6} />
               <span>{t(item.label)}</span>
             </button>
           </Tooltip>
         ))}
       </div>
-      <Tooltip label={t('navigation.search')} side={collapsed ? 'right' : 'bottom'}>
-        <button
-          type="button"
-          className="dt-nav-icon"
-          aria-label={t('navigation.search')}
-          aria-expanded={nav.searchOpen}
-          onClick={() => {
-            if (collapsed) navigateTask('/space/chat-history', router.push)
-            else nav.setSearchOpen(!nav.searchOpen)
-          }}
-        >
-          <Search size={19} strokeWidth={1.65} />
+      <Tooltip label={t('navigation.search')} side={collapsed ? 'right' : 'bottom'} shortcut={SHORTCUTS.search}>
+        <button type="button" className="dt-nav-icon" aria-label={t('navigation.search')} aria-haspopup="dialog" onClick={onSearch}>
+          <Search size={16} strokeWidth={1.6} />
         </button>
       </Tooltip>
-      {!collapsed && nav.searchOpen && (
-        <input
-          autoFocus
-          aria-label={t('navigation.search')}
-          placeholder={t('navigation.search')}
-          value={nav.query}
-          onChange={event => nav.setQuery(event.target.value)}
-          onKeyDown={event => {
-            if (event.key === 'Escape') {
-              nav.setQuery('')
-              nav.setSearchOpen(false)
-            }
-          }}
-          className="dt-nav-search"
-        />
-      )}
     </div>
   )
 }
@@ -199,11 +173,7 @@ export function CategoryBody({
               { href: '/co-writer', label: 'Co-Writer', icon: PenLine },
               { href: '/agents', label: 'My Agents', icon: Bot },
             ]
-              .filter(
-                item =>
-                  navVisibleUnderPolicy(item.href, nav.allowedSurfaces) &&
-                  matches(t(item.label), nav.query)
-              )
+              .filter(item => navVisibleUnderPolicy(item.href, nav.allowedSurfaces))
               .map(item => (
                 <NavigationRow
                   key={item.href}
@@ -218,30 +188,18 @@ export function CategoryBody({
       )}
       {(nav.category === 'learning' || nav.visited.includes('learning')) && (
         <div hidden={nav.category !== 'learning'} className="dt-category-panel">
-          <LearningNavigation
-            active={nav.category === 'learning'}
-            query={nav.category === 'learning' ? nav.query : ''}
-            sessions={sessions}
-          />
+          <LearningNavigation active={nav.category === 'learning'} sessions={sessions} />
         </div>
       )}
       {(nav.category === 'partners' || nav.visited.includes('partners')) && (
         <div hidden={nav.category !== 'partners'} className="dt-category-panel">
-          <PartnerNavigation
-            active={nav.category === 'partners'}
-            query={nav.category === 'partners' ? nav.query : ''}
-          />
+          <PartnerNavigation active={nav.category === 'partners'} />
         </div>
       )}
       {(nav.category === 'resources' || nav.visited.includes('resources')) && (
         <div hidden={nav.category !== 'resources'}>
-          <ResourcesNavigation query={nav.category === 'resources' ? nav.query : ''} />
+          <ResourcesNavigation />
         </div>
-      )}
-      {nav.searchOpen && matches(t('Settings'), nav.query) && (
-        <Section title={t('Settings')}>
-          <NavigationRow href="/settings" label={t('Settings')} icon={Settings} />
-        </Section>
       )}
     </div>
   )

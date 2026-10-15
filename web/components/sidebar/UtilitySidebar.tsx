@@ -5,7 +5,7 @@ import { sessionWorkspaceId } from "@/lib/session-api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import { SidebarShell } from "@/components/sidebar/SidebarShell";
+import { LayoutSidebarShell } from "@/features/ui-layout/slots";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { AdminLink } from "@/components/auth/AdminLink";
 import { ProfileLink } from "@/components/auth/ProfileLink";
@@ -143,7 +143,7 @@ export default function UtilitySidebar() {
   );
 
   return (
-    <SidebarShell
+    <LayoutSidebarShell
       showSessions
       sessions={sessions}
       courses={courses}

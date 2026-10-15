@@ -29,6 +29,8 @@ export function useSidebarDrawer() {
 interface AppShellProps {
   /** The route group's sidebar (workspace or utility). */
   sidebar: ReactNode;
+  /** Bar above the page (the layout variant decides what, if anything). */
+  pageBar?: ReactNode;
   homeHref?: string;
   children: ReactNode;
 }
@@ -49,7 +51,7 @@ interface AppShellProps {
  * the very first server-rendered paint is already correct on a phone. JS only
  * owns the part that is stateful anyway: whether the drawer is open.
  */
-export default function AppShell({ sidebar, children, homeHref = "/" }: AppShellProps) {
+export default function AppShell({ sidebar, pageBar, children, homeHref = "/" }: AppShellProps) {
   const { t } = useTranslation();
   const pathname = usePathname();
   const { isMobile } = useDevice();
@@ -130,6 +132,7 @@ export default function AppShell({ sidebar, children, homeHref = "/" }: AppShell
             </Link>
           </div>
 
+          {pageBar}
           <div className="min-h-0 flex-1 overflow-hidden">
             <Suspense fallback={<div aria-busy="true" className="h-full bg-[var(--background)]" />}>
               {children}

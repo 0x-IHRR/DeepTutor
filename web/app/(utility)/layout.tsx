@@ -1,5 +1,6 @@
 import UtilitySidebar from "@/components/sidebar/UtilitySidebar";
 import AppShell from "@/components/layout/AppShell";
+import { LayoutPageBar } from "@/features/ui-layout/slots";
 import { CapabilityAccessProvider } from "@/components/access/CapabilityAccessContext";
 import CapabilityGate from "@/components/access/CapabilityGate";
 
@@ -10,7 +11,7 @@ export default function UtilityLayout({
 }>) {
   return (
     <CapabilityAccessProvider>
-      <AppShell sidebar={<UtilitySidebar />}>
+      <AppShell sidebar={<UtilitySidebar />} pageBar={<LayoutPageBar />}>
         <CapabilityGate>{children}</CapabilityGate>
       </AppShell>
     </CapabilityAccessProvider>

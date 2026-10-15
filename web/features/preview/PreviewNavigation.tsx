@@ -19,7 +19,7 @@ import {
 import Tooltip from '@/shared/ui/Tooltip'
 import PartnerAvatar from '@/components/partners/PartnerAvatar'
 import { useSidebarDrawer } from '@/components/layout/AppShell'
-import { DASHBOARD_GROUPS } from '@/components/space/SpaceDashboard'
+import { DASHBOARD_GROUPS } from '@/components/space/dashboard-groups'
 import { learningKinds, type Category, type Collections, type LearningRecord } from './collections'
 import type { PreviewView } from './fixtures'
 

@@ -24,6 +24,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { MessageSquare } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useCapabilityLabel } from "@/features/ui-layout/tokens";
 
 import ChatComposer from "@/components/chat/home/ChatComposer";
 import type { ContextBudget } from "@/components/chat/home/ContextBudgetChip";
@@ -672,14 +673,15 @@ function StandaloneComposerImpl({
     [notebookReferencesPayload, selectedNotebookRecords],
   );
 
+  const capabilityLabel = useCapabilityLabel();
   const resolvedCapabilities = useMemo(() => {
     const list = capabilities?.length ? capabilities : [CHAT_ONLY_CAPABILITY];
     return list.map((capability) => ({
       ...capability,
-      label: t(capability.label),
+      label: capabilityLabel(capability),
       description: t(capability.description),
     }));
-  }, [capabilities, t]);
+  }, [capabilities, capabilityLabel, t]);
   const activeCap =
     resolvedCapabilities.find(
       (capability) => capability.value === activeCapValue,

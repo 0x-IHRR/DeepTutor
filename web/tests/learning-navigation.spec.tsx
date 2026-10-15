@@ -17,19 +17,19 @@ vi.mock('@/hooks/useLearningIndex', () => ({ useLearningIndex: () => ({
 beforeEach(() => localStorage.clear())
 
 it('sorts by creation independently of activity and retains the preference', () => {
-  const view = render(<LearningNavigation query="" sessions={null} />)
+  const view = render(<LearningNavigation sessions={null} />)
   const records = () => within(screen.getByRole('region', { name: 'navigation.learningRecords' })).getAllByRole('link')
   expect(records()[0]).toHaveTextContent('Older material')
   fireEvent.change(screen.getByRole('combobox', { name: 'navigation.sortLearning' }), { target: { value: 'createdAt' } })
   expect(records()[0]).toHaveTextContent('Newly created material')
   expect(records()[1]).toHaveAttribute('href', '/learning/practice?question=1&dt_workspace=physics')
   view.unmount()
-  render(<LearningNavigation query="" sessions={null} />)
+  render(<LearningNavigation sessions={null} />)
   expect(records()[0]).toHaveTextContent('Newly created material')
 })
 
 it('searches records without discarding the rest of the library', () => {
-  render(<LearningNavigation query="" sessions={null} />)
+  render(<LearningNavigation sessions={null} />)
   fireEvent.click(screen.getByRole('button', { name: 'navigation.searchLearning' }))
   const input = screen.getByRole('textbox', { name: 'navigation.searchLearning' })
   fireEvent.change(input, { target: { value: 'recently' } })

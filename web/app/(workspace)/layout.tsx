@@ -1,6 +1,7 @@
 import TaskBoardRuntime from "@/components/tasks/TaskBoardRuntime";
 import WorkspaceSidebar from "@/components/sidebar/WorkspaceSidebar";
 import AppShell from "@/components/layout/AppShell";
+import { LayoutPageBar } from "@/features/ui-layout/slots";
 import { CapabilityAccessProvider } from "@/components/access/CapabilityAccessContext";
 import CapabilityGate from "@/components/access/CapabilityGate";
 import { ChatRuntimeProvider } from "@/features/chat";
@@ -23,7 +24,7 @@ export default function WorkspaceLayout({
             /chat → /chat/<id>, which remounts the page. The open document
             must not die with it. */}
               <ReadingProvider>
-                  <AppShell sidebar={<WorkspaceSidebar />}>
+                  <AppShell sidebar={<WorkspaceSidebar />} pageBar={<LayoutPageBar />}>
                     <CapabilityGate>{children}</CapabilityGate>
                   </AppShell>
               </ReadingProvider>

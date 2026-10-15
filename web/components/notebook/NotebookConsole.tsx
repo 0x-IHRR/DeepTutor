@@ -28,6 +28,7 @@ import {
   type NotebookSummary,
 } from "@/lib/notebook-api";
 import { notebookRoute } from "@/lib/resource-routes";
+import { useUiLayoutLabel } from "@/features/ui-layout/tokens";
 
 const SWATCHES = [
   "#6366F1",
@@ -63,6 +64,7 @@ export default function NotebookConsole({
   onScopeChanged,
 }: NotebookConsoleProps) {
   const { t } = useTranslation();
+  const spaceLabel = useUiLayoutLabel("space");
   const router = useRouter();
   const library = useNotebookLibrary(
     initialNotebookId,
@@ -255,14 +257,14 @@ export default function NotebookConsole({
         <div className="flex flex-col gap-2.5 px-3 pb-2.5 pt-3">
           <Link
             href="/space"
-            className="group inline-flex w-fit items-center gap-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+            className="dt-section-back group inline-flex w-fit items-center gap-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
           >
             <ArrowLeft
               size={13}
               strokeWidth={1.8}
               className="transition-transform group-hover:-translate-x-0.5"
             />
-            {t("Learning Space")}
+            {spaceLabel}
           </Link>
 
           <div className="flex items-center justify-between">

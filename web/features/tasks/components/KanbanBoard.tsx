@@ -11,6 +11,7 @@ import {
   CircleCheck,
   CircleDashed,
   CircleDot,
+  Columns3,
   Folder,
   Plus,
   RotateCcw,
@@ -84,6 +85,7 @@ export default function KanbanBoard() {
   return (
     <FeaturePage>
         <SpaceSectionHeader
+          icon={Columns3}
           title={t('Task Board')}
           description={t('kanban.intro')}
           action={

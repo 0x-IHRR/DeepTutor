@@ -21,11 +21,9 @@ const GROUP_LABELS: Record<DayGroupKey, string> = {
   earlier: 'Earlier',
 }
 export function LearningNavigation({
-  query,
   sessions,
   active = true,
 }: {
-  query: string
   sessions: ReactNode
   active?: boolean
 }) {
@@ -47,7 +45,7 @@ export function LearningNavigation({
   const rows = allLearningActivity(sources)
     .filter(row => {
       const label = `${row.title} ${row.workspaceName ?? ''} ${t(learningSurface(row.kind).title)}`
-      return matches(label, query) && matches(label, localQuery)
+      return matches(label, localQuery)
     })
     .sort((a, b) => b[sort] - a[sort] || a.key.localeCompare(b.key))
   const grouped = Map.groupBy(rows.slice(0, limit), row => getDayGroupKey(row[sort]))
@@ -62,7 +60,7 @@ export function LearningNavigation({
             if (!event.metaKey && !event.ctrlKey && !event.shiftKey) drawer?.close()
           }}
         >
-          <LayoutGrid size={18} strokeWidth={1.6} />
+          <LayoutGrid size={16} strokeWidth={1.6} />
           <span>{t('navigation.allLearning')}</span>
         </Link>
         <LearningCreateMenu compact />
@@ -145,7 +143,7 @@ export function LearningNavigation({
         ))}
         {!loading && !rows.length && !failed.length && (
           <p className="dt-navigation-empty">
-            {t(query || localQuery ? 'navigation.noResults' : 'navigation.noLearning')}
+            {t(localQuery ? 'navigation.noResults' : 'navigation.noLearning')}
           </p>
         )}
         {rows.length > limit && (

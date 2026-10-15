@@ -4,7 +4,7 @@ import { pageActionClass, pageGridClass } from '@/components/layout/FeaturePage'
 import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Cpu, Loader2, Plug, Plus, Trash2, X } from "lucide-react";
+import { Cpu, Loader2, Plug, Plus, Trash2, X, Bot } from "lucide-react";
 
 import { agentGlyph } from "@/components/agents/agent-icons";
 import SpaceSectionHeader from "@/components/space/SpaceSectionHeader";
@@ -98,6 +98,7 @@ export default function ConnectedAgents() {
   return (
     <section className="space-y-4">
       <SpaceSectionHeader
+        icon={Bot}
         title={tr({ zh: "连接的智能体", en: "Connected agents" })}
         description={tr({
           zh: "把本机智能体或已配置的远程 Hermes 网关接进来，在对话中选中后直接向它提问——运行过程会实时展示。",

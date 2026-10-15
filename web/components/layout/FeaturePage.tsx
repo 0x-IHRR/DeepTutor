@@ -1,9 +1,11 @@
 import type { ComponentPropsWithRef, ReactNode, Ref, UIEventHandler } from 'react'
+import type { LucideIcon } from 'lucide-react'
 
 /** Feature page standard, based on Personalized Learning:
  * - Centered 1180px outer box; horizontal gutters 24px, 36px from 768px.
  * - Vertical padding 28px, 36px from 1024px; 24px from header to content.
- * - Sans page title 27px / 30px at 640px of usable content; no title icon.
+ * - Page title 27px / 30px at 640px of usable content; no title icon. Its
+ *   face is a UI layout token (serif classic, sans modern).
  * - Sans description 12.5px, section label 13.5px; one h1 per page.
  * - Actions stack below the title under 640px of content and wrap in order.
  * - Grids share 520 / 800 / 1040px container breakpoints and a 12px gap.
@@ -51,11 +53,12 @@ export function FeaturePage({
   )
 }
 
-export const PAGE_TITLE_CLASS = 'dt-page-title min-w-0 break-words font-sans font-semibold leading-normal tracking-[-0.02em] text-[var(--foreground)]'
+export const PAGE_TITLE_CLASS = 'dt-page-title min-w-0 break-words font-semibold leading-normal tracking-[-0.02em] text-[var(--foreground)]'
 export const PAGE_DESCRIPTION_CLASS = 'mt-1.5 max-w-2xl text-[12.5px] leading-relaxed text-[var(--muted-foreground)]'
 export const PAGE_SECTION_TITLE_CLASS = 'text-[13.5px] font-semibold text-[var(--foreground)]'
 
-/** No decorative title icon or divider. Icons belong to cards and actions.
+/** No divider. A page icon is drawn only where the UI layout shows it
+ * (`.dt-page-icon` is hidden by default; the modern layout reveals it).
  * Secondary sections use h2 so a feature page always has one main heading.
  */
 export function PageHeader({
@@ -66,6 +69,7 @@ export function PageHeader({
   level = 1,
   titleId,
   headingTour,
+  icon: Icon,
 }: {
   title: ReactNode
   description?: ReactNode
@@ -74,11 +78,17 @@ export function PageHeader({
   level?: 1 | 2
   titleId?: string
   headingTour?: string
+  icon?: LucideIcon
 }) {
   const Heading = level === 1 ? 'h1' : 'h2'
   return (
     <header data-page-header className="dt-page-header mb-6 flex min-w-0 flex-col gap-4">
       <div className="min-w-0">
+        {Icon && level === 1 && (
+          <span aria-hidden className="dt-page-icon">
+            <Icon size={28} strokeWidth={1.5} />
+          </span>
+        )}
         <div className="flex flex-wrap items-center gap-2.5">
           <Heading id={titleId} data-tour={headingTour} className={level === 1 ? PAGE_TITLE_CLASS : PAGE_SECTION_TITLE_CLASS}>
             {title}

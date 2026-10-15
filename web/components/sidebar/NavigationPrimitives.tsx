@@ -41,7 +41,7 @@ export function NavigationRow({
         aria-current={selected ? 'page' : undefined}
         className={`dt-navigation-row ${selected ? 'is-active' : ''}`}
       >
-        {children ?? (Icon && <Icon size={18} strokeWidth={1.6} />)}
+        {children ?? (Icon && <Icon size={16} strokeWidth={1.6} />)}
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {trailing ??
           (detail && (

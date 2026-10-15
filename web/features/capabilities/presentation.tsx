@@ -68,7 +68,7 @@ export interface ChatCapabilityDef extends CapabilityDef {
 export const CHAT_CAPABILITIES: ChatCapabilityDef[] = [
   {
     value: "",
-    label: "Auto",
+    label: "Chat",
     description: "Flexible conversation with any tool",
     icon: MessageSquare,
     allowedTools: [

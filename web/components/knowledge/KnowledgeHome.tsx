@@ -5,6 +5,7 @@ import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  BookOpen,
   Check,
   ChevronRight,
   Cloud,
@@ -234,6 +235,7 @@ export default function KnowledgeHome({
   return (
     <FeaturePage>
         <PageHeader
+          icon={BookOpen}
           title={t("Knowledge Center")}
           description={t("Manage your knowledge bases and retrieval engines.")}
           action={

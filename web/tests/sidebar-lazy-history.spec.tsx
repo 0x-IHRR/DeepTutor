@@ -81,8 +81,10 @@ it("loads conversation history while navigation remains usable, then preserves s
   expect(scroller).not.toContainElement(
     screen.getByRole("tab", { name: "navigation.home" }),
   );
+  // Settings lives in the header's workspace menu, outside the history scroller.
+  fireEvent.click(screen.getByRole("button", { name: /General workspace/ }));
   expect(scroller).not.toContainElement(
-    screen.getByRole("link", { name: "Settings" }),
+    screen.getByRole("menuitem", { name: "Settings" }),
   );
 
   fireEvent.click(await screen.findByText("Retained session"));

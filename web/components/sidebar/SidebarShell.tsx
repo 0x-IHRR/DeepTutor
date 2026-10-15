@@ -8,6 +8,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   Suspense,
@@ -15,7 +16,7 @@ import {
   type CSSProperties,
 } from "react";
 import { useAppShell } from "@/context/AppShellContext";
-import { MessageCircle, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ChevronsLeft, PanelLeftClose, PanelLeftOpen, SquarePen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useChatWorkspaces } from "@/hooks/useChatWorkspaces";
 
@@ -34,6 +35,8 @@ import { CategoryBody, CategoryTabs, useCategoryNavigation } from "@/components/
 import { isLearningSession } from "@/lib/navigation";
 import { SECONDARY_NAV, isNavActive } from "@/components/sidebar/nav-entries";
 import Tooltip from "@/shared/ui/Tooltip";
+import { WorkspaceMenu } from "@/components/sidebar/WorkspaceMenu";
+import { SHORTCUTS, matchesShortcut } from "@/lib/shortcuts";
 import {
   mergeManualOrder,
   readSessionOrder,
@@ -42,6 +45,12 @@ import {
 
 // The fallback history list is needed only by shells without organization.
 const SessionList = dynamic(() => import("@/components/SessionList"), { ssr: false });
+
+// Loaded on first ⌘K, with the learning and partner indexes it searches.
+const CommandPalette = dynamic(
+  () => import("@/components/sidebar/CommandPalette").then((module) => module.CommandPalette),
+  { ssr: false },
+);
 
 // Session data arrives after mount; defer its organization UI with it so
 // every workspace route does not download it as part of the initial shell.
@@ -62,7 +71,7 @@ const OrganizedSessionList = dynamic(
   },
 );
 
-interface SidebarShellProps {
+export interface SidebarShellProps {
   /** Reuse the shell's resizing/collapse behavior with embedded navigation. */
   homeSlot?: (collapsed: boolean) => ReactNode;
   bodySlot?: (collapsed: boolean) => ReactNode;
@@ -130,6 +139,7 @@ export function SidebarShell({
   const { isMobile } = useDevice();
   const drawer = useSidebarDrawer();
   const recentsScrollRef = useRef<HTMLDivElement>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   // One load for the whole column: the workspace groups head their own
   // section with it and the row menus offer it as a move destination.
   const { workspaces } = useChatWorkspaces();
@@ -178,6 +188,12 @@ export function SidebarShell({
     writeSessionOrder([]);
   }, []);
 
+  const startNewChat = () => {
+    drawer?.close();
+    onNewChat?.();
+    navigateTask("/chat", router.push);
+  };
+
   const handleHomeClick = (event: React.MouseEvent) => {
     // Always reset to a fresh session (mirrors the old "New Chat" affordance);
     // let modifier-clicks fall through to default Link behavior so middle-click
@@ -185,84 +201,119 @@ export function SidebarShell({
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1)
       return;
     event.preventDefault();
-    drawer?.close();
-    onNewChat?.();
-    navigateTask("/chat", router.push);
+    startNewChat();
   };
+
+  // Shell shortcuts. The handler is re-bound after every render so it always
+  // sees the current category list; the listener itself is installed once.
+  const hotkeys = useRef<(event: KeyboardEvent) => void>(() => {});
+  const handleHotkey = (event: KeyboardEvent) => {
+    if (matchesShortcut(event, SHORTCUTS.search)) {
+      event.preventDefault();
+      setPaletteOpen((open) => !open);
+    } else if (matchesShortcut(event, SHORTCUTS.newChat)) {
+      event.preventDefault();
+      startNewChat();
+    } else {
+      const index = categoryNav.categories.findIndex((_, position) =>
+        matchesShortcut(event, SHORTCUTS.category(position)),
+      );
+      if (index < 0) return;
+      event.preventDefault();
+      const target = categoryNav.categories[index];
+      categoryNav.select(target.id);
+      if (collapsed) navigateTask(target.href, router.push);
+    }
+  };
+  useLayoutEffect(() => {
+    hotkeys.current = handleHotkey;
+  });
+  useEffect(() => {
+    if (bodySlot) return;
+    const onKeyDown = (event: KeyboardEvent) => hotkeys.current(event);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [bodySlot]);
+
+  const palette =
+    !bodySlot && paletteOpen ? (
+      <CommandPalette
+        open
+        onClose={() => setPaletteOpen(false)}
+        categories={categoryNav.categories}
+        allowedSurfaces={categoryNav.allowedSurfaces}
+        sessions={sessions}
+        onSelectSession={onSelectSession}
+        onNewChat={startNewChat}
+      />
+    ) : null;
 
   // Everything the learner has, minus the archived and minus the tutor threads
   // that render nested under the conversation that spawned them.
   //
   // Keep the complete index here. OrganizedSessionList limits the initial
   // rendering and exposes older conversations through Show more.
+  // The product shell files learning conversations under Learning only; an
+  // embedded body (the /preview demo) brings its own lists.
   const visibleSessions = sessions.filter(
     (session) =>
-      !session.preferences?.archived && !session.preferences?.parent_session_id &&
-      (!bodySlot ? (categoryNav.category === "learning" ? isLearningSession(session) : !isLearningSession(session)) : true) &&
-      (!categoryNav.query || session.title.toLocaleLowerCase().includes(categoryNav.query.toLocaleLowerCase())),
+      !session.preferences?.archived &&
+      !session.preferences?.parent_session_id &&
+      (Boolean(bodySlot) || isLearningSession(session) === (categoryNav.category === "learning")),
   );
 
-  const sessionContent = <>
-{/* Conversation history follows the module entries in the same scroller. */}
-        {showSessions &&
-        (categoryNav.category !== "learning" || loadingSessions || visibleSessions.length > 0) &&
-        onSelectSession &&
-        onRenameSession &&
-        onDeleteSession ? (
-          <section className="mt-3 px-2 pt-0.5">
-            {!onOrganizeSession && <div className="mb-2 px-2 text-xs text-[var(--muted-foreground)]">{t("Recent")}</div>}
-            {loadingSessions ? (
-              <SessionList
-                sessions={[]}
-                activeSessionId={activeSessionId}
-                loading
-                onSelect={onSelectSession}
-                onRename={onRenameSession}
-                onDelete={onDeleteSession}
-                compact
-              />
-            ) : onOrganizeSession ? (
-              <OrganizedSessionList
-                sessions={visibleSessions}
-                // Course grouping temporarily hidden pending further product
-                // work; passing [] keeps the list flat without touching the
-                // course data callers still fetch.
-                courses={[]}
-                workspaces={workspaces}
-                groupWorkspaces
-                onNewWorkspaceChat={onNewWorkspaceChat}
-                masteryTopics={masteryTopics}
-                readingCollections={readingCollections}
-                activeSessionId={activeSessionId}
-                liveSessionIds={liveSessionIds}
-                manualOrder={sessionOrder}
-                onReorder={handleReorderSessions}
-                onResetOrder={handleResetSessionOrder}
-                scrollRef={recentsScrollRef}
-                onSelect={(sessionId) => {
-                  drawer?.close();
-                  return onSelectSession(sessionId);
-                }}
-                onRename={onRenameSession}
-                onDelete={onDeleteSession}
-                onOrganize={onOrganizeSession}
-              />
-            ) : (
-              <SessionList
-                sessions={visibleSessions}
-                activeSessionId={activeSessionId}
-                onSelect={(sessionId) => {
-                  drawer?.close();
-                  return onSelectSession(sessionId);
-                }}
-                onRename={onRenameSession}
-                onDelete={onDeleteSession}
-                compact
-              />
-            )}
-          </section>
-        ) : null}
-</>;
+  // Conversation history follows the category's entries in the same scroller.
+  const sessionContent = (
+    <>
+      {showSessions &&
+      (categoryNav.category !== "learning" || loadingSessions || visibleSessions.length > 0) &&
+      onSelectSession &&
+      onRenameSession &&
+      onDeleteSession &&
+      onOrganizeSession ? (
+        <section className="dt-navigation-section dt-session-section">
+          {loadingSessions ? (
+            <SessionList
+              sessions={[]}
+              activeSessionId={activeSessionId}
+              loading
+              onSelect={onSelectSession}
+              onRename={onRenameSession}
+              onDelete={onDeleteSession}
+              compact
+            />
+          ) : (
+            <OrganizedSessionList
+              sessions={visibleSessions}
+              // Course grouping temporarily hidden pending further product
+              // work; passing [] keeps the list flat without touching the
+              // course data callers still fetch.
+              courses={[]}
+              workspaces={workspaces}
+              groupWorkspaces
+              workspaceHeading
+              onNewWorkspaceChat={onNewWorkspaceChat}
+              masteryTopics={masteryTopics}
+              readingCollections={readingCollections}
+              activeSessionId={activeSessionId}
+              liveSessionIds={liveSessionIds}
+              manualOrder={sessionOrder}
+              onReorder={handleReorderSessions}
+              onResetOrder={handleResetSessionOrder}
+              scrollRef={recentsScrollRef}
+              onSelect={(sessionId) => {
+                drawer?.close();
+                return onSelectSession(sessionId);
+              }}
+              onRename={onRenameSession}
+              onDelete={onDeleteSession}
+              onOrganize={onOrganizeSession}
+            />
+          )}
+        </section>
+      ) : null}
+    </>
+  );
 
   /* ---- Collapsed state ---- */
   if (collapsed) {
@@ -293,14 +344,14 @@ export function SidebarShell({
           </button>
         </div>
 
-        {homeSlot ? homeSlot(true) : <CategoryTabs nav={categoryNav} collapsed />}
+        {homeSlot ? homeSlot(true) : <CategoryTabs nav={categoryNav} collapsed onSearch={() => setPaletteOpen(true)} />}
         <div className="min-h-0 w-full flex-1 overflow-y-auto overscroll-contain">
           {bodySlot ? bodySlot(true) : <CategoryBody nav={categoryNav} collapsed sessions={null} />}
         </div>
 
         {/* Secondary nav + footer */}
         {footerOverride ? footerOverride(true) : <div className="flex w-full shrink-0 flex-col items-center gap-1 px-1.5">
-          <Tooltip label={t("navigation.newChat")} side="right"><Link prefetch={false} href="/chat" onClick={handleHomeClick} aria-label={t("navigation.newChat")} className="dt-nav-icon"><MessageCircle size={20} /></Link></Tooltip>
+          <Tooltip label={t("navigation.newChat")} side="right"><Link prefetch={false} href="/chat" onClick={handleHomeClick} aria-label={t("navigation.newChat")} className="dt-nav-icon"><SquarePen size={17} strokeWidth={1.6} /></Link></Tooltip>
           <div className="my-1 h-px w-7 bg-border/40" />
           {SECONDARY_NAV.map((item) => {
             const active = isNavActive(pathname, item.href);
@@ -324,6 +375,7 @@ export function SidebarShell({
           {renderedFooter}
           <VersionBadge onNavigate={closeDrawerOnNav} />
         </div>}
+        {palette}
       </aside>
     );
   }
@@ -334,37 +386,54 @@ export function SidebarShell({
       style={{ "--sidebar-width": `${resize.width}px` } as CSSProperties}
       className={`${bodySlot ? "" : "dt-product-sidebar"} relative flex h-dvh w-[var(--sidebar-width)] max-w-[45vw] shrink-0 flex-col bg-[var(--secondary)] max-md:w-[220px] max-md:max-w-[85vw]`}
     >
-      {/* Header: logo + collapse toggle */}
-      <div className="flex h-[52px] shrink-0 items-center justify-between px-4">
-        <Link href={brandHref} prefetch={false} className="group flex items-center gap-1.5">
-          <Image
-            src="/logo.png"
-            alt="DeepTutor"
-            width={22}
-            height={22}
-            className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
-          />
-          <Image
-            src="/banner.png"
-            alt="DeepTutor"
-            width={897}
-            height={236}
-            priority
-            className="h-[22px] w-auto transition-transform duration-200 group-hover:scale-105"
-          />
-        </Link>
-        {/* The rail is a desktop affordance; in the drawer the scrim and the
-            top-bar toggle already own "make this go away". */}
-        <button
-          onClick={() => setCollapsed(true)}
-          className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] max-md:hidden"
-          aria-label={t("Collapse sidebar")}
-        >
-          <PanelLeftClose size={15} />
-        </button>
-      </div>
+      {bodySlot ? (
+        <div className="flex h-[52px] shrink-0 items-center justify-between px-4">
+          <Link href={brandHref} prefetch={false} className="group flex items-center gap-1.5">
+            <Image
+              src="/logo.png"
+              alt="DeepTutor"
+              width={22}
+              height={22}
+              className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
+            />
+            <Image
+              src="/banner.png"
+              alt="DeepTutor"
+              width={897}
+              height={236}
+              priority
+              className="h-[22px] w-auto transition-transform duration-200 group-hover:scale-105"
+            />
+          </Link>
+          {/* The rail is a desktop affordance; in the drawer the scrim and the
+              top-bar toggle already own "make this go away". */}
+          <button
+            onClick={() => setCollapsed(true)}
+            className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] max-md:hidden"
+            aria-label={t("Collapse sidebar")}
+          >
+            <PanelLeftClose size={15} />
+          </button>
+        </div>
+      ) : (
+        <div className="dt-sidebar-header">
+          <WorkspaceMenu accountSlot={renderedFooter} onNavigate={() => drawer?.close()} />
+          {/* The rail is a desktop affordance; in the drawer the scrim and the
+              top-bar toggle already own "make this go away". */}
+          <Tooltip label={t("Collapse sidebar")} side="bottom">
+            <button
+              type="button"
+              onClick={() => setCollapsed(true)}
+              className="dt-nav-icon max-md:hidden"
+              aria-label={t("Collapse sidebar")}
+            >
+              <ChevronsLeft size={17} strokeWidth={1.6} />
+            </button>
+          </Tooltip>
+        </div>
+      )}
 
-      {homeSlot ? homeSlot(false) : <CategoryTabs nav={categoryNav} collapsed={false} />}
+      {homeSlot ? homeSlot(false) : <CategoryTabs nav={categoryNav} collapsed={false} onSearch={() => setPaletteOpen(true)} />}
 
       {/* Partner previews stay visible while their conversation list scrolls. */}
       <div
@@ -377,32 +446,16 @@ export function SidebarShell({
       </div>
 
       {/* Secondary nav + footer */}
-      {footerOverride ? footerOverride(false) : <div className="shrink-0 px-2 py-2">
-        <Link prefetch={false} href="/chat" onClick={handleHomeClick} className="dt-new-conversation"><MessageCircle size={18} strokeWidth={1.6} /><span>{t("navigation.newChat")}</span></Link>
-        {renderedFooter}
-        <div className="flex items-center gap-1">
-          {SECONDARY_NAV.map((item) => {
-            const active = isNavActive(pathname, item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                prefetch={false}
-                onClick={closeDrawerOnNav}
-                className={`flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] transition-colors ${
-                  active
-                    ? "bg-[var(--accent)] font-medium text-[var(--foreground)]"
-                    : "text-foreground/85 hover:bg-background/60 hover:text-[var(--foreground)]"
-                }`}
-              >
-                <item.icon size={15} strokeWidth={active ? 1.9 : 1.6} />
-                <span>{t(item.label)}</span>
-              </Link>
-            );
-          })}
-          <VersionBadge onNavigate={closeDrawerOnNav} />
+      {footerOverride ? footerOverride(false) : (
+        <div className="dt-sidebar-footer">
+          <Tooltip label={t("navigation.newChat")} side="top" shortcut={SHORTCUTS.newChat} as="div" className="block w-full">
+            <Link prefetch={false} href="/chat" onClick={handleHomeClick} className="dt-new-conversation">
+              <SquarePen size={16} strokeWidth={1.7} />
+              <span>{t("navigation.newChat")}</span>
+            </Link>
+          </Tooltip>
         </div>
-      </div>}
+      )}
       {!isMobile && (
         <div
           role="separator"
@@ -420,6 +473,7 @@ export function SidebarShell({
           />
         </div>
       )}
+      {palette}
     </aside>
   );
 }

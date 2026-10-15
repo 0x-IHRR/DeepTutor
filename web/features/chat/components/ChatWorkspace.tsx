@@ -35,7 +35,6 @@ import { useTranslation } from "react-i18next";
 import type { SelectedRecord } from "@/lib/notebook-selection-types";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
-
 import ChatComposer from "@/components/chat/home/ChatComposer";
 import { ChatMessageList } from "@/features/chat/messages";
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
@@ -154,11 +153,6 @@ import {
   type SelectionTutorContext,
 } from "@/lib/selection-tutor";
 import { shouldReturnToChatAfterResearch } from "@/lib/deep-research-report";
-
-const HomeShortcuts = dynamic(
-  () => import("@/components/chat/home/HomeShortcuts").then(module => module.HomeShortcuts),
-  { loading: () => <div className="h-8" aria-busy="true" /> },
-);
 
 const NotebookRecordPicker = dynamic(
   () => import("@/components/notebook/NotebookRecordPicker"),
@@ -2428,7 +2422,7 @@ export default function ChatWorkspace() {
                     onKeyDown={handleSessionTitleKeyDown}
                     disabled={sessionTitleSaving}
                     aria-label={t("Session title")}
-                    className="min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--foreground)] shadow-sm outline-none transition focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20 disabled:opacity-60"
+                    className="dt-chat-title min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--foreground)] shadow-sm outline-none transition focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20 disabled:opacity-60"
                     maxLength={100}
                   />
                 ) : (
@@ -2442,7 +2436,7 @@ export default function ChatWorkspace() {
                       type="button"
                       onClick={startSessionTitleEdit}
                       disabled={!canRenameSession}
-                      className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-xl px-2 py-1 text-left font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--foreground)] transition hover:bg-[var(--muted)]/55 disabled:cursor-default disabled:hover:bg-transparent"
+                      className="dt-chat-title inline-flex min-w-0 max-w-full items-center gap-2 rounded-xl px-2 py-1 text-left font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--foreground)] transition hover:bg-[var(--muted)]/55 disabled:cursor-default disabled:hover:bg-transparent"
                     >
                       <span className="truncate">{displaySessionTitle}</span>
                       {canRenameSession ? (
@@ -2503,8 +2497,8 @@ export default function ChatWorkspace() {
                   </div>
                 </div>
               ) : !hasMessages ? (
-                <div className="flex w-full flex-1 min-h-0 items-end justify-center pb-14 px-6">
-                  <div className="w-full max-w-[960px] flex flex-col items-center justify-center gap-4">
+                <div className="flex w-full flex-1 min-h-0 items-end justify-center pb-14 animate-fade-in px-6">
+                  <div className="w-full max-w-[960px] flex items-center justify-center gap-4">
                     <img
                       src="/logo_black.png"
                       alt="DeepTutor"
@@ -2513,8 +2507,7 @@ export default function ChatWorkspace() {
                       className="h-10 w-10 select-none"
                       draggable={false}
                     />
-                    <p className="text-sm font-medium text-muted-foreground">Dito</p>
-                    <h1 className="font-sans text-[36px] font-medium leading-[1.1] tracking-[-0.015em] text-[var(--foreground)]">
+                    <h1 className="font-serif text-[40px] font-medium leading-[1.1] tracking-[-0.015em] text-[var(--foreground)]">
                       {t(welcomeGreeting)}
                     </h1>
                   </div>
@@ -2795,7 +2788,6 @@ export default function ChatWorkspace() {
                 inputPlaceholder={askHint || undefined}
                 inputPlaceholderCompletion={askHint}
               />
-              {!hasMessages && !state.workspaceMode && <HomeShortcuts />}
               {/* Starter chips sit between the composer and the spacer, so they
                 ride up with the composer on the empty screen and disappear the
                 moment the conversation has a first message. Clicking one sends

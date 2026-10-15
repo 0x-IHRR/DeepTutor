@@ -11,7 +11,7 @@
 import { FeaturePage, PageHeader, pageActionClass, pageGridClass } from '@/components/layout/FeaturePage'
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { HeartHandshake, Loader2, Plus, Users } from "lucide-react";
+import { HeartHandshake, Loader2, Plus, Users, MessageCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { listPartners, type PartnerInfo } from "@/lib/partners-api";
 import { listPartnerGroups, type PartnerGroup } from "@/lib/partner-groups-api";
@@ -76,6 +76,7 @@ export default function PartnersPage() {
   return (
     <FeaturePage>
       <PageHeader
+        icon={MessageCircle}
         titleId="partners"
         title={t("Partners")}
         description={anyAssigned

@@ -59,7 +59,7 @@ it('keeps an empty workspace visible and allows starting its first chat', () => 
 
 it('keeps unassigned chats in a peer Recent section with independent five-row limits', () => {
   const unassigned = rows.map((row, index) => ({ ...row, id: `recent-${index}`, session_id: `recent-${index}`, title: `Recent ${index}`, content_workspace_id: '' }))
-  const view = render(<OrganizedSessionList sessions={[...unassigned, ...rows]} courses={[]} workspaces={[workspace]} groupWorkspaces
+  const view = render(<OrganizedSessionList sessions={[...unassigned, ...rows]} courses={[]} workspaces={[workspace]} groupWorkspaces workspaceHeading
     activeSessionId={null} onSelect={vi.fn()} onRename={vi.fn()} onDelete={vi.fn()} onOrganize={vi.fn()} />)
   const workspaceGroup = view.container.querySelector('[data-group-id="workspace:physics"]')! as HTMLElement
   const recentGroup = view.container.querySelector('[data-group-id="recent:unassigned"]')! as HTMLElement

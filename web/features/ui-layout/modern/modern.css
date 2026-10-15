@@ -1,0 +1,278 @@
+/* Modern UI tokens and styles. Shared components read the tokens;
+   everything else here styles modern-only components. */
+
+/* ---- Foundation ------------------------------------------------------
+   One ink drives every neutral: text, borders and hover fills are that ink
+   at fixed strengths, so surfaces stay quiet on white and on the grey
+   sidebar alike. Shadows are layered (hairline + soft lift), never a single
+   heavy drop. */
+:root[data-ui-layout="modern"] {
+  --dt-page-title-font: theme("fontFamily.sans");
+  --dt-ink: 55 53 47;
+  --dt-shadow-xs: 0 0 0 1px rgb(15 15 15 / 0.04), 0 1px 2px rgb(15 15 15 / 0.06);
+  --dt-shadow-sm: 0 0 0 1px rgb(15 15 15 / 0.05), 0 2px 4px rgb(15 15 15 / 0.06), 0 6px 16px -6px rgb(15 15 15 / 0.1);
+  --dt-shadow-md: 0 0 0 1px rgb(15 15 15 / 0.05), 0 3px 6px rgb(15 15 15 / 0.08), 0 9px 24px rgb(15 15 15 / 0.14);
+  --dt-radius-sm: 6px;
+  --dt-radius-md: 8px;
+  --dt-radius-lg: 12px;
+  --dt-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+:root[data-ui-layout="modern"].dark,
+:root[data-ui-layout="modern"].theme-glass {
+  --dt-ink: 255 255 255;
+  --dt-shadow-xs: 0 0 0 1px rgb(255 255 255 / 0.06), 0 1px 2px rgb(0 0 0 / 0.3);
+  --dt-shadow-sm: 0 0 0 1px rgb(255 255 255 / 0.07), 0 2px 4px rgb(0 0 0 / 0.3), 0 6px 16px -6px rgb(0 0 0 / 0.4);
+  --dt-shadow-md: 0 0 0 1px rgb(255 255 255 / 0.08), 0 3px 6px rgb(0 0 0 / 0.3), 0 9px 24px rgb(0 0 0 / 0.45);
+}
+
+/* The default light theme turns warm: Notion-like warm grey canvas and ink.
+   The brand blue stays, kept for actions and links. */
+:root[data-ui-layout="modern"].theme-snow {
+  --foreground: #37352f;
+  --card-foreground: #37352f;
+  --popover-foreground: #37352f;
+  --secondary-foreground: #37352f;
+  --accent-foreground: #37352f;
+  --muted-foreground: #787774;
+  --secondary: #f8f8f7;
+  --muted: #f1f1ef;
+  --accent: rgb(55 53 47 / 0.06);
+  --border: rgb(55 53 47 / 0.09);
+  --input: rgb(55 53 47 / 0.16);
+  --shadow-raised: var(--dt-shadow-md);
+}
+
+/* ---- Pages -----------------------------------------------------------
+   Titles are bold and tight; every FeaturePage gets more air above it. */
+:root[data-ui-layout="modern"] .dt-page-title {
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+@container feature-page (min-width: 640px) {
+  :root[data-ui-layout="modern"] .dt-page-title { font-size: 32px; }
+}
+/* The page's own icon, Notion-style, sitting above its title. */
+:root[data-ui-layout="modern"] .dt-page-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 52px; height: 52px; margin-bottom: 18px;
+  border-radius: 14px; background: var(--muted); color: rgb(var(--dt-ink) / 0.72);
+  box-shadow: inset 0 0 0 1px rgb(var(--dt-ink) / 0.04);
+}
+:root[data-ui-layout="modern"] [data-page-header] > div > p { margin-top: 8px; font-size: 14px; line-height: 1.6; }
+:root[data-ui-layout="modern"] [data-feature-page] > .dt-page-container { padding-top: 48px; }
+@media (min-width: 1024px) {
+  :root[data-ui-layout="modern"] [data-feature-page] > .dt-page-container { padding-top: 64px; }
+}
+
+/* The same application, with four contextual navigation shelves. */
+.dt-product-sidebar {
+  container-type: inline-size;
+  border-right: 1px solid var(--border);
+  --dt-nav-row: 32px;
+  --dt-nav-pad-x: 10px;
+  --dt-nav-gap: 8px;
+  --dt-nav-radius: 7px;
+  --dt-nav-text: 13px;
+  --dt-nav-list-text: 12.5px;
+  --dt-nav-label: 12px;
+  --dt-nav-ink: color-mix(in srgb, var(--foreground) 82%, transparent);
+}
+.dt-product-sidebar .dt-category-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 2px 8px 8px; flex-shrink: 0; }
+.dt-category-bar [role="tablist"] { display: flex; flex: 1; align-items: center; min-width: 0; gap: 1px; }
+.dt-category-bar [role="tab"] { position: relative; display: flex; align-items: center; justify-content: center; flex: 1; min-width: 30px; height: var(--dt-nav-row); gap: 6px; padding: 0 8px; color: var(--muted-foreground); border-radius: var(--dt-nav-radius); transition: color 140ms, background-color 140ms; }
+.dt-category-bar [role="tab"] > svg, .dt-category-bar [role="tab"] > span:not(.dt-category-pill) { position: relative; z-index: 1; flex-shrink: 0; }
+.dt-category-bar [role="tab"] > span:not(.dt-category-pill) { display: none; font-size: var(--dt-nav-list-text); font-weight: 500; white-space: nowrap; }
+.dt-category-bar [role="tab"].is-active { flex: 1.9; color: var(--foreground); }
+.dt-category-bar [role="tab"].is-active > span:not(.dt-category-pill) { display: inline; }
+.dt-category-pill { position: absolute; inset: 0; border-radius: var(--dt-nav-radius); background: var(--accent); }
+.dt-category-bar [role="tab"]:not(.is-active):hover, .dt-nav-icon:hover { background: var(--accent); color: var(--foreground); }
+.dt-nav-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--dt-nav-radius); color: var(--muted-foreground); transition: background-color 140ms, color 140ms; }
+.dt-category-bar button:focus-visible, .dt-navigation-row:focus-visible, .dt-nav-icon:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.dt-product-sidebar .dt-category-bar.is-collapsed { flex-direction: column; padding: 4px; }
+.dt-category-bar.is-collapsed [role="tablist"] { flex-direction: column; gap: 5px; }
+.dt-category-bar.is-collapsed [role="tab"] { width: 36px; height: 36px; flex: none; }
+.dt-category-bar.is-collapsed [role="tab"] > span:not(.dt-category-pill) { display: none; }
+.dt-category-content { padding: 0 8px 16px; }
+.dt-navigation-section { margin-top: 14px; }
+.dt-navigation-heading, .dt-product-sidebar .dt-projects-heading { display: flex; justify-content: space-between; align-items: center; min-height: 26px; margin-bottom: 2px; padding: 0 var(--dt-nav-pad-x); font-size: var(--dt-nav-label); font-weight: 500; color: var(--muted-foreground); }
+.dt-navigation-row { display: flex; align-items: center; gap: var(--dt-nav-gap); min-height: var(--dt-nav-row); padding: 6px var(--dt-nav-pad-x); border-radius: var(--dt-nav-radius); text-align: left; color: var(--dt-nav-ink); font-size: var(--dt-nav-text); transition: background-color 130ms, color 130ms; }
+/* OrganizedSessionList insets its rows 6px; 4px more lands its icons in the
+   same column as the navigation rows above (8 + 4 + 6 = row padding 10 + 8). */
+.dt-session-section { padding: 0 4px; }
+.dt-product-sidebar .dt-session-section .dt-projects-heading { padding: 0 6px; }
+.dt-navigation-row > svg { flex-shrink: 0; opacity: .8; }
+.dt-navigation-row:hover, .dt-navigation-row.is-active { background: var(--accent); color: var(--foreground); }
+.dt-navigation-row.is-active { font-weight: 500; }
+.dt-navigation-empty { padding: 4px var(--dt-nav-pad-x); font-size: 11.5px; line-height: 1.7; color: var(--muted-foreground); }
+.dt-category-content-fixed { display: flex; flex-direction: column; height: 100%; min-height: 0; padding-bottom: 0; }
+.dt-category-content-fixed > .dt-navigation-section { flex-shrink: 0; margin-top: 4px; }
+.dt-partner-navigation { display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 14px; padding-top: 10px; }
+.dt-partner-preview { flex-shrink: 0; }
+.dt-partner-navigation .dt-navigation-heading { flex-shrink: 0; }
+.dt-navigation-heading h2 { display: flex; align-items: center; min-width: 0; gap: 7px; font: inherit; }
+.dt-navigation-count { font-size: 11px; font-weight: 400; font-variant-numeric: tabular-nums; opacity: .6; }
+.dt-navigation-actions { display: flex; align-items: center; gap: 2px; margin-right: -6px; }
+.dt-navigation-actions .dt-nav-icon { width: 24px; height: 24px; border-radius: 6px; }
+.dt-navigation-view-all { display: inline-flex; align-items: center; gap: 1px; height: 24px; padding: 0 4px 0 6px; border-radius: 6px; font-size: 11.5px; font-weight: 400; white-space: nowrap; transition: background-color 140ms, color 140ms; }
+.dt-navigation-view-all:hover { background: var(--accent); color: var(--foreground); }
+/* Roster: one compact strip that slides sideways; PartnerRoster packs what
+   continues past an edge. The selected partner is marked on its avatar. */
+.dt-partner-roster {
+  /* The offsetParent its items measure against. */
+  position: relative;
+  display: flex;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 52px;
+  /* Set by PartnerRoster: fades only the sides that have more beyond them. */
+  mask-image: linear-gradient(to right, transparent, #000 var(--dt-roster-fade-l, 0px), #000 calc(100% - var(--dt-roster-fade-r, 0px)), transparent);
+  scrollbar-width: none;
+  padding: 3px 0 2px;
+  cursor: grab;
+  user-select: none;
+}
+.dt-partner-roster::-webkit-scrollbar { display: none; }
+.dt-partner-roster.is-dragging { cursor: grabbing; scroll-snap-type: none; }
+.dt-partner-roster-item { position: relative; display: flex; flex: 0 0 46px; align-items: center; flex-direction: column; gap: 5px; padding: 4px 1px 2px; min-width: 0; scroll-snap-align: start; transform-origin: 50% 20px; will-change: transform, opacity; -webkit-user-drag: none; }
+.dt-partner-roster-item > :first-child { transition: box-shadow 160ms; }
+.dt-partner-roster-item:hover > :first-child { box-shadow: 0 0 0 2px var(--secondary), 0 0 0 3.5px color-mix(in srgb, var(--foreground) 22%, transparent); }
+.dt-partner-roster-item[aria-current="page"] > :first-child { box-shadow: 0 0 0 2px var(--secondary), 0 0 0 3.5px var(--foreground); }
+.dt-partner-roster-item[aria-current="page"] > span:last-child { color: var(--foreground); font-weight: 500; }
+.dt-partner-roster-item:hover > span:last-child { color: var(--foreground); }
+.dt-partner-roster-item > span:last-child { font-size: 11px; line-height: 15px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; max-width: 100%; color: var(--muted-foreground); opacity: var(--dt-roster-label, 1); transition: color 140ms; }
+.dt-partner-roster-item:focus-visible { outline: none; }
+.dt-partner-roster-item:focus-visible > :first-child { box-shadow: 0 0 0 2px var(--secondary), 0 0 0 4px var(--ring); }
+.dt-partner-sessions { display: flex; flex: 1; flex-direction: column; min-height: 0; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
+/* Keep the tooltip's visually hidden text inside this scroll container too. */
+.dt-partner-session-list { position: relative; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 0 8px; }
+.dt-partner-session-list .dt-navigation-row, .dt-learning-record-list .dt-navigation-row { font-size: var(--dt-nav-list-text); }
+/* Lists that scroll above the footer fade out instead of being cut by it. */
+.dt-partner-session-list, .dt-learning-record-list { mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent); }
+.dt-partner-session-list:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; border-radius: 7px; }
+.dt-navigation-view-all:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+@container (max-width: 240px) { .dt-category-bar [role="tab"] { padding: 0 5px; gap: 4px; } .dt-category-bar [role="tab"] > span:not(.dt-category-pill) { font-size: 12px; } }
+
+@media (prefers-reduced-motion: reduce) { .dt-category-content { animation: none; } .dt-product-sidebar * { transition-duration: 0ms !important; } }
+
+.dt-category-panel:not([hidden]) { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.dt-learning-navigation { display: flex; flex: 1; flex-direction: column; min-height: 0; padding-top: 10px; }
+.dt-learning-overview { display: flex; align-items: center; flex-shrink: 0; border-radius: var(--dt-nav-radius); padding-right: 4px; }
+.dt-learning-overview:hover, .dt-learning-overview.is-active { background: var(--accent); }
+.dt-learning-overview > a { display: flex; align-items: center; flex: 1; min-width: 0; min-height: var(--dt-nav-row); gap: var(--dt-nav-gap); padding: 6px var(--dt-nav-pad-x); font-size: var(--dt-nav-text); font-weight: 500; }
+.dt-learning-overview > a:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; border-radius: 7px; }
+.dt-learning-record-toolbar { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; padding: 12px 5px 4px; }
+.dt-learning-record-toolbar select { min-width: 0; max-width: 80%; padding: 4px; background: transparent; color: var(--muted-foreground); font-size: 11.5px; border-radius: 6px; cursor: pointer; }
+.dt-learning-record-toolbar select:hover { background: var(--accent); }
+.dt-learning-record-toolbar select:focus-visible { outline: 2px solid var(--ring); }
+.dt-learning-record-toolbar option { background: var(--background); color: var(--foreground); }
+.dt-learning-search { flex-shrink: 0; margin: 0 4px 8px; width: calc(100% - 8px); }
+.dt-learning-record-list { position: relative; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
+.dt-learning-record-list:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; border-radius: 7px; }
+.dt-learning-time-group { margin-bottom: 14px; }
+.dt-learning-time-group > h2 { padding: 8px var(--dt-nav-pad-x) 4px; font-size: var(--dt-nav-label); font-weight: 500; color: var(--muted-foreground); }
+.dt-record-time { flex-shrink: 0; max-width: 38%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 400; color: var(--muted-foreground); opacity: .75; }
+
+/* ---- Sidebar header: the workspace menu ------------------------------ */
+.dt-sidebar-header { display: flex; align-items: center; gap: 4px; height: 52px; padding: 0 8px; flex-shrink: 0; }
+.dt-sidebar-header > .dt-nav-icon { opacity: 0; transition: opacity 140ms, background-color 140ms, color 140ms; }
+.dt-product-sidebar:hover .dt-sidebar-header > .dt-nav-icon,
+.dt-sidebar-header > .dt-nav-icon:focus-visible { opacity: 1; }
+.dt-workspace-menu { position: relative; flex: 1; min-width: 0; }
+.dt-workspace-trigger { display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; padding: 0 8px; border-radius: var(--dt-radius-md); font-size: 13.5px; font-weight: 600; color: var(--foreground); transition: background-color 140ms; }
+.dt-workspace-trigger:hover, .dt-workspace-trigger[aria-expanded="true"] { background: var(--accent); }
+.dt-workspace-trigger:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.dt-workspace-glyph { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 6px; color: #fff; font-weight: 600; line-height: 1; }
+.dt-workspace-glyph.is-general { padding: 1px; background: transparent; }
+.dt-popover {
+  position: absolute; z-index: 60; top: calc(100% + 4px); left: 0;
+  padding: 6px; border-radius: var(--dt-radius-lg); background: var(--popover); color: var(--popover-foreground);
+  box-shadow: var(--dt-shadow-md); transform-origin: top left; animation: dt-pop-in 140ms var(--dt-ease);
+}
+.dt-workspace-panel { width: max(100%, 260px); }
+.dt-menu-label { padding: 6px 8px 4px; font-size: 11.5px; font-weight: 500; color: var(--muted-foreground); }
+.dt-menu-item, .dt-menu-slot :is(a, button) {
+  display: flex; align-items: center; gap: 9px; width: 100%; min-height: 32px; padding: 5px 8px;
+  border-radius: var(--dt-radius-sm); font-size: 13px; color: var(--foreground); text-align: left; transition: background-color 120ms;
+}
+.dt-menu-item:hover, .dt-menu-item:focus-visible, .dt-menu-slot :is(a, button):hover { background: var(--accent); outline: none; }
+.dt-menu-item.is-quiet { color: var(--muted-foreground); }
+.dt-menu-item > svg { flex-shrink: 0; opacity: .8; }
+.dt-menu-slot :is(a, button) { color: var(--foreground) !important; background: transparent; }
+.dt-menu-divider { height: 1px; margin: 6px 4px; background: var(--border); }
+.dt-menu-footer { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 0 8px; font-size: 11.5px; color: var(--muted-foreground); }
+@keyframes dt-pop-in { from { opacity: 0; transform: scale(.97) translateY(-2px); } to { opacity: 1; transform: none; } }
+
+/* ---- Sidebar footer: one generous new-conversation button ------------ */
+.dt-sidebar-footer { flex-shrink: 0; padding: 8px 10px 12px; }
+.dt-new-conversation {
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 40px;
+  border-radius: 999px; background: var(--background); color: var(--foreground);
+  font-size: 13.5px; font-weight: 500; box-shadow: var(--dt-shadow-sm);
+  transition: box-shadow 160ms var(--dt-ease), transform 160ms var(--dt-ease), background-color 160ms;
+}
+.dt-new-conversation > svg { flex-shrink: 0; opacity: .75; }
+.dt-new-conversation:hover { box-shadow: var(--dt-shadow-md); }
+.dt-new-conversation:active { transform: scale(.985); }
+.dt-new-conversation:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+/* ---- ⌘K command palette --------------------------------------------- */
+.dt-palette-backdrop { position: fixed; inset: 0; z-index: 900; display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 16px; background: rgb(15 15 15 / 0.32); animation: dt-fade-in 120ms ease-out; }
+.dt-palette {
+  display: flex; flex-direction: column; width: min(640px, 100%); max-height: min(560px, 76vh); overflow: hidden;
+  border-radius: 14px; background: var(--popover); color: var(--popover-foreground); box-shadow: var(--dt-shadow-md);
+  animation: dt-pop-in 160ms var(--dt-ease);
+}
+.dt-palette-field { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.dt-palette-field input { flex: 1; min-width: 0; background: transparent; font-size: 15px; outline: none; color: var(--foreground); }
+.dt-palette-field input::placeholder { color: var(--muted-foreground); }
+.dt-palette-results { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 6px; }
+.dt-palette-group { padding: 10px 10px 4px; font-size: 11.5px; font-weight: 500; color: var(--muted-foreground); }
+.dt-palette-item { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 6px 10px; border-radius: var(--dt-radius-md); font-size: 13.5px; cursor: pointer; }
+.dt-palette-item[aria-selected="true"] { background: var(--accent); }
+.dt-palette-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 20px; color: var(--muted-foreground); }
+.dt-palette-detail { flex-shrink: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted-foreground); }
+.dt-palette-empty { padding: 28px 12px; text-align: center; font-size: 13px; color: var(--muted-foreground); }
+.dt-palette-hints { display: flex; gap: 16px; height: 36px; align-items: center; padding: 0 16px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted-foreground); flex-shrink: 0; }
+.dt-palette-hints kbd { display: inline-flex; min-width: 18px; height: 18px; align-items: center; justify-content: center; margin-right: 2px; padding: 0 4px; border-radius: 4px; background: var(--muted); font-family: inherit; font-size: 10.5px; }
+@keyframes dt-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .dt-palette, .dt-palette-backdrop, .dt-popover { animation: none; } }
+
+/* ---- Chat home ----------------------------------------------------------
+   The greeting stays as classic has it — the mark beside a serif line, as
+   Claude does — warm against the sans UI. The composer and the suggestions
+   join the modern surfaces. */
+:root[data-ui-layout="modern"] .dt-composer-surface {
+  border-radius: 20px; border-color: transparent;
+  box-shadow: 0 0 0 1px rgb(var(--dt-ink) / 0.09), 0 4px 12px -4px rgb(15 15 15 / 0.06), 0 18px 40px -16px rgb(15 15 15 / 0.12);
+  transition: box-shadow 200ms var(--dt-ease);
+}
+:root[data-ui-layout="modern"] .dt-composer-surface:focus-within {
+  box-shadow: 0 0 0 1px rgb(var(--dt-ink) / 0.16), 0 4px 12px -4px rgb(15 15 15 / 0.08), 0 22px 48px -16px rgb(15 15 15 / 0.16);
+}
+.dt-starter-heading { margin: 4px 0 6px; font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
+:root[data-ui-layout="modern"] .dt-starter-line {
+  font-family: theme("fontFamily.sans"); font-size: 14px; letter-spacing: 0; color: rgb(var(--dt-ink) / 0.8);
+}
+:root[data-ui-layout="modern"] .dt-starter-line:hover { color: var(--foreground); }
+:root[data-ui-layout="modern"] .dt-chat-title { font-family: theme("fontFamily.sans"); font-size: 15px; letter-spacing: -0.01em; }
+
+/* ---- Page bar: where this page lives, and whose it is ----------------- */
+.dt-page-bar { display: flex; align-items: center; gap: 2px; height: 44px; padding: 0 10px; flex-shrink: 0; }
+@media (max-width: 767px) { .dt-page-bar { display: none; } }
+.dt-crumb, .dt-scope-chip {
+  display: inline-flex; align-items: center; gap: 7px; height: 28px; max-width: 100%; padding: 0 8px;
+  border-radius: var(--dt-radius-sm); font-size: 13.5px; color: var(--foreground); transition: background-color 120ms;
+}
+.dt-scope-chip { gap: 6px; font-size: 13px; color: var(--muted-foreground); }
+.dt-crumb:hover, .dt-crumb[aria-expanded="true"], .dt-scope-chip:hover, .dt-scope-chip[aria-expanded="true"] { background: var(--accent); }
+.dt-crumb:focus-visible, .dt-scope-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.dt-crumb-panel { width: 248px; max-height: min(420px, 70vh); overflow-y: auto; }
+.dt-menu-item[aria-current="page"] { background: color-mix(in srgb, var(--primary) 9%, transparent); }
+/* The bar replaces each section's "← back" link; detail pages without the
+   bar keep theirs. */
+main:has(.dt-page-bar) .dt-section-back { display: none; }
+/* With the bar above, pages need less air of their own. */
+main:has(.dt-page-bar) [data-feature-page] > .dt-page-container { padding-top: 28px; }
+@media (min-width: 1024px) { main:has(.dt-page-bar) [data-feature-page] > .dt-page-container { padding-top: 40px; } }

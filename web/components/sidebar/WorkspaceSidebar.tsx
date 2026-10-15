@@ -7,7 +7,7 @@ import { workspaceChatHref } from "@/lib/workspaces-api";
 
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import { SidebarShell } from "@/components/sidebar/SidebarShell";
+import { LayoutSidebarShell } from "@/features/ui-layout/slots";
 import { reconcileUnread } from "@/lib/session-unread";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { AdminLink } from "@/components/auth/AdminLink";
@@ -233,7 +233,7 @@ export default function WorkspaceSidebar() {
   );
 
   return (
-    <SidebarShell
+    <LayoutSidebarShell
       showSessions
       sessions={liveSessions}
       liveSessionIds={liveSessionIds}
