@@ -2850,6 +2850,65 @@ async def test_context_checkpoint_folds_completed_tool_rounds(
 
 
 @pytest.mark.asyncio
+async def test_context_checkpoint_state_replaces_instead_of_stacking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _StatefulCheckpointRegistry(_Registry):
+        async def execute(self, name: str, **kwargs):
+            query = str(kwargs.get("query") or "")
+            return ToolResult(
+                content=f"noisy tool result for {query}",
+                success=True,
+                metadata={
+                    "_context_checkpoint": {
+                        "summary": f"checkpoint: {query}",
+                        "state": f"state after {query}",
+                    }
+                },
+            )
+
+    def _search(call_id: str, query: str) -> SimpleNamespace:
+        return _llm_chunk(
+            tool_calls=[
+                {"id": call_id, "name": "web_search", "arguments": json.dumps({"query": query})}
+            ]
+        )
+
+    client = _ScriptedChatClient(
+        [
+            [_search("call-1", "step one")],
+            [_search("call-2", "step two")],
+            [_llm_chunk(content="Final.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _StatefulCheckpointRegistry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    await _run(
+        pipeline,
+        UnifiedContext(session_id="s1", user_message="Research this", enabled_tools=["web_search"]),
+    )
+
+    second_round = [m.get("content") for m in client.calls[1]["messages"]]
+    assert second_round[-2:] == [
+        "[Context checkpoint]\ncheckpoint: step one",
+        "state after step one",
+    ]
+    third_round = client.calls[2]["messages"]
+    contents = [str(m.get("content") or "") for m in third_round]
+    # Summaries accumulate as history; only the latest state is kept, last.
+    assert contents[-3:] == [
+        "[Context checkpoint]\ncheckpoint: step one",
+        "[Context checkpoint]\ncheckpoint: step two",
+        "state after step two",
+    ]
+    assert "state after step one" not in contents
+    assert not any(m.get("role") == "tool" for m in third_round)
+
+
+@pytest.mark.asyncio
 async def test_ask_user_available_every_round(monkeypatch: pytest.MonkeyPatch) -> None:
     """The single loop offers the full tool belt — including ask_user — on
     every round; there is no respond stage that narrows tools to ask_user."""
