@@ -22,7 +22,7 @@ Rejected requests return `429` (rate limit) or `403` (IP lists, ban). The guard 
 - It does not use Redis. Counters live in each backend process, so with `backend_workers` greater than 1 the effective limit is up to `rate_limit` times the worker count.
 - It does not add security headers, handle CORS or send telemetry (`security_headers`, `enable_cors` and `enable_agent` are all off).
 
-Two engine behaviours worth knowing: paths in the engine's default `exclude_paths` (`/docs`, `/redoc`, `/openapi.json`, `/openapi.yaml`, `/favicon.ico`, `/static`) skip the attack-pattern scan only, the rate limit and IP lists still apply to them; and an allowlisted address skips both the attack-pattern scan and the rate limit.
+Two engine behaviours worth knowing, as of fastapi-guard 8.1.1 / guard-core 4.4.0 (later engine versions may change them): paths in the engine's default `exclude_paths` (`/docs`, `/redoc`, `/openapi.json`, `/openapi.yaml`, `/favicon.ico`, `/static`) skip the attack-pattern scan only, the rate limit and IP lists still apply to them; and an allowlisted address skips both the attack-pattern scan and the rate limit.
 
 ## Enable it
 
@@ -43,13 +43,14 @@ Two engine behaviours worth knowing: paths in the engine's default `exclude_path
        "rate_limit": 300,
        "rate_limit_window": 60,
        "trusted_proxies": ["127.0.0.1", "::1"],
+       "exempt_ips": ["127.0.0.1", "::1"],
        "whitelist": [],
        "blacklist": []
      }
    }
    ```
 
-   Outside Docker the same keys can be set as process environment overrides: `DEEPTUTOR_GUARD_ENABLED`, `DEEPTUTOR_GUARD_RATE_LIMIT`, `DEEPTUTOR_GUARD_RATE_LIMIT_WINDOW`, `DEEPTUTOR_GUARD_TRUSTED_PROXIES`, `DEEPTUTOR_GUARD_WHITELIST` and `DEEPTUTOR_GUARD_BLACKLIST` (comma-separated IPs or CIDR ranges). The Docker entrypoint ignores process environment overrides, so in a container use `system.json`.
+   Outside Docker the same keys can be set as process environment overrides: `DEEPTUTOR_GUARD_ENABLED`, `DEEPTUTOR_GUARD_RATE_LIMIT`, `DEEPTUTOR_GUARD_RATE_LIMIT_WINDOW`, `DEEPTUTOR_GUARD_TRUSTED_PROXIES`, `DEEPTUTOR_GUARD_EXEMPT_IPS`, `DEEPTUTOR_GUARD_WHITELIST` and `DEEPTUTOR_GUARD_BLACKLIST` (comma-separated IPs or CIDR ranges). The Docker entrypoint ignores process environment overrides, so in a container use `system.json`.
 
 3. Restart the backend.
 
@@ -57,7 +58,7 @@ If `enabled` is true and `fastapi-guard` is not installed, the backend refuses t
 
 ### Sizing the rate limit
 
-The limit counts **every** HTTP request from one client address, including the frontend's background polling (several panels poll every 1 to 5 seconds). 300 per 60 seconds leaves room for a few open panels; the engine's own default of 10 per 60 seconds would trip on normal use. The Next.js frontend serves its static assets itself, so those requests do not reach the backend and are not counted.
+The limit counts **every** HTTP request from one client address, including the frontend's background polling (several panels poll every 1 to 5 seconds). 300 per 60 seconds leaves room for a few open panels, whereas the 10 per 60 seconds that fastapi-guard 8.1.1 uses when nothing is configured would trip on normal use. The Next.js frontend serves its static assets itself, so those requests do not reach the backend and are not counted.
 
 ## Client address and proxies
 
@@ -73,4 +74,6 @@ python -m uvicorn deeptutor.api.main:app --host 0.0.0.0 --port 8001 --no-proxy-h
 
 If a reverse proxy sits in front of the backend, add its address to `trusted_proxies`; otherwise every client looks like the proxy. The guard warns when it bans a private address because of this.
 
-**Bundled frontend.** The Next.js proxy (`web/proxy.ts`) deletes `X-Forwarded-For` and the other forwarded headers from browser requests (`web/lib/backend-forward.ts`) and does not add the browser's address. Requests that reach the backend through it all arrive from the frontend's own address (loopback in the default layout). The rate limit and IP lists then apply to the frontend as a whole, not per browser, and the guard does not ban loopback. Per-client limits and lists apply to requests that reach the backend directly.
+**Bundled frontend.** The Next.js proxy (`web/proxy.ts`) deletes `X-Forwarded-For` and the other forwarded headers from browser requests (`web/lib/backend-forward.ts`) and does not add the browser's address. Requests that reach the backend through it all arrive from the frontend's own address (loopback in the default layout), with no forwarded header. One shared limit would throttle every user together, so `exempt_ips` (default `127.0.0.1` and `::1`) exempts that address from the rate limit. Through the frontend, requests are therefore screened for attack patterns and the denylist, but not rate-limited. Per-client limits apply to requests that reach the backend directly, or through a reverse proxy that sets `X-Forwarded-For` and is listed in `trusted_proxies` (with `exempt_ips` containing loopback, a loopback request that carries `X-Forwarded-For` is limited as the forwarded client). `exempt_ips` skips the rate limit only: the denylist, bans and the attack-pattern scan still apply to listed addresses. The guard does not ban loopback addresses.
+
+**Allowlist with the bundled frontend.** If `whitelist` is set, frontend traffic (loopback) is refused unless loopback is listed. With the bundled frontend, add `127.0.0.1` and `::1` to `whitelist`. The allowlist and denylist then govern direct backend access only, because the frontend hides browser addresses.

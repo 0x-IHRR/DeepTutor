@@ -200,6 +200,7 @@ def test_settings_defaults_json_and_env_overrides(tmp_path: Path) -> None:
         "rate_limit": 300,
         "rate_limit_window": 60,
         "trusted_proxies": ["127.0.0.1", "::1"],
+        "exempt_ips": ["127.0.0.1", "::1"],
         "whitelist": [],
         "blacklist": [],
     }
@@ -211,6 +212,7 @@ def test_settings_defaults_json_and_env_overrides(tmp_path: Path) -> None:
             "DEEPTUTOR_GUARD_RATE_LIMIT": "50",
             "DEEPTUTOR_GUARD_RATE_LIMIT_WINDOW": "10",
             "DEEPTUTOR_GUARD_TRUSTED_PROXIES": "10.0.0.0/8, 192.168.1.5",
+            "DEEPTUTOR_GUARD_EXEMPT_IPS": "10.1.2.3; 10.9.0.0/16",
             "DEEPTUTOR_GUARD_WHITELIST": "203.0.113.0/24",
             "DEEPTUTOR_GUARD_BLACKLIST": "198.51.100.9",
         },
@@ -220,6 +222,7 @@ def test_settings_defaults_json_and_env_overrides(tmp_path: Path) -> None:
         "rate_limit": 50,
         "rate_limit_window": 10,
         "trusted_proxies": ["10.0.0.0/8", "192.168.1.5"],
+        "exempt_ips": ["10.1.2.3", "10.9.0.0/16"],
         "whitelist": ["203.0.113.0/24"],
         "blacklist": ["198.51.100.9"],
     }
@@ -227,11 +230,12 @@ def test_settings_defaults_json_and_env_overrides(tmp_path: Path) -> None:
     # system.json: an explicit empty list means "trust no proxy" (not the default).
     from_file = RuntimeSettingsService(tmp_path / "c", process_env={})
     system = from_file.load_system(include_process_overrides=False)
-    system["security_guard"] = {"enabled": True, "trusted_proxies": []}
+    system["security_guard"] = {"enabled": True, "trusted_proxies": [], "exempt_ips": []}
     from_file.save_system(system)
     saved = from_file.load_system()["security_guard"]
     assert saved["enabled"] is True
     assert saved["trusted_proxies"] == []
+    assert saved["exempt_ips"] == []
     assert saved["rate_limit"] == 300
 
 
@@ -247,6 +251,7 @@ def test_security_config_is_stateless_and_scoped() -> None:
     assert config.detection_scan_body is False
     assert config.enable_agent is False
     assert config.trusted_proxies == ()
+    assert config.exempt_ips == ("127.0.0.1", "::1")
     assert (config.rate_limit, config.rate_limit_window) == (300, 60)
 
 
@@ -312,6 +317,72 @@ async def test_forwarded_for_is_honoured_from_trusted_proxy() -> None:
 
     assert a == [200, 200, 429]
     assert b == 200  # a different forwarded client has its own window
+
+
+@requires_guard
+@pytest.mark.asyncio
+async def test_loopback_without_forwarded_for_is_not_rate_limited() -> None:
+    """The bundled frontend arrives as loopback with no X-Forwarded-For."""
+    app = _build_app(rate_limit=3, rate_limit_window=60)
+
+    statuses = [(await _call(app, client=("127.0.0.1", 1)))[0] for _ in range(8)]
+
+    assert statuses == [200] * 8
+
+
+@requires_guard
+@pytest.mark.asyncio
+async def test_loopback_attack_query_is_still_blocked() -> None:
+    app = _build_app(rate_limit=3, rate_limit_window=60)
+
+    status, _, _ = await _call(app, client=("127.0.0.1", 1), query="q=<script>alert(1)</script>")
+
+    assert status == 400
+
+
+@requires_guard
+@pytest.mark.asyncio
+async def test_lan_peer_is_still_rate_limited_with_loopback_exempt() -> None:
+    app = _build_app(rate_limit=3, rate_limit_window=60)
+    peer = _unique_ip()
+
+    statuses = [(await _call(app, client=(peer, 1)))[0] for _ in range(4)]
+
+    assert statuses == [200, 200, 200, 429]
+
+
+@requires_guard
+@pytest.mark.asyncio
+async def test_loopback_with_forwarded_for_stays_limited_per_forwarded_client() -> None:
+    app = _build_app(rate_limit=3, rate_limit_window=60)
+    forwarded = _unique_ip()
+
+    statuses = [
+        (await _call(app, client=("127.0.0.1", 1), headers=[("x-forwarded-for", forwarded)]))[0]
+        for _ in range(4)
+    ]
+
+    assert statuses == [200, 200, 200, 429]
+
+
+@requires_guard
+@pytest.mark.asyncio
+async def test_allowlist_without_loopback_refuses_the_bundled_frontend() -> None:
+    app = _build_app(whitelist=[_unique_ip()])
+
+    status, _, _ = await _call(app, client=("127.0.0.1", 1))
+
+    assert status == 403
+
+
+@requires_guard
+@pytest.mark.asyncio
+async def test_allowlist_with_loopback_admits_the_bundled_frontend() -> None:
+    app = _build_app(whitelist=["127.0.0.1", "::1"])
+
+    status, _, _ = await _call(app, client=("127.0.0.1", 1))
+
+    assert status == 200
 
 
 @requires_guard

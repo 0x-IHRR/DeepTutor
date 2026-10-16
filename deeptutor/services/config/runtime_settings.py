@@ -78,6 +78,11 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
         "rate_limit": 300,
         "rate_limit_window": 60,
         "trusted_proxies": ["127.0.0.1", "::1"],
+        # Skip the rate limit only. The bundled frontend hides browser
+        # addresses, so its traffic arrives as loopback and would share one
+        # bucket; loopback requests that carry X-Forwarded-For still resolve
+        # to, and are limited as, the forwarded client.
+        "exempt_ips": ["127.0.0.1", "::1"],
         "whitelist": [],
         "blacklist": [],
     },
@@ -411,6 +416,7 @@ _SECURITY_GUARD_ENV_KEYS = (
     ("DEEPTUTOR_GUARD_RATE_LIMIT", "rate_limit"),
     ("DEEPTUTOR_GUARD_RATE_LIMIT_WINDOW", "rate_limit_window"),
     ("DEEPTUTOR_GUARD_TRUSTED_PROXIES", "trusted_proxies"),
+    ("DEEPTUTOR_GUARD_EXEMPT_IPS", "exempt_ips"),
     ("DEEPTUTOR_GUARD_WHITELIST", "whitelist"),
     ("DEEPTUTOR_GUARD_BLACKLIST", "blacklist"),
 )
@@ -1351,6 +1357,9 @@ class RuntimeSettingsService:
                 "trusted_proxies": _host_list(guard["trusted_proxies"])
                 if "trusted_proxies" in guard
                 else list(guard_defaults["trusted_proxies"]),
+                "exempt_ips": _host_list(guard["exempt_ips"])
+                if "exempt_ips" in guard
+                else list(guard_defaults["exempt_ips"]),
                 "whitelist": _host_list(guard.get("whitelist")),
                 "blacklist": _host_list(guard.get("blacklist")),
             },

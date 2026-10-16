@@ -46,6 +46,7 @@ def build_security_config(settings: dict[str, Any]) -> Any:
         rate_limit=settings["rate_limit"],
         rate_limit_window=settings["rate_limit_window"],
         trusted_proxies=tuple(settings["trusted_proxies"]),
+        exempt_ips=tuple(settings["exempt_ips"]),
         whitelist=tuple(settings["whitelist"]) or None,
         blacklist=tuple(settings["blacklist"]),
         # Process-local state: each uvicorn worker keeps its own counters.
@@ -75,10 +76,11 @@ def install_security_guard(app: FastAPI, settings: dict[str, Any] | None = None)
 
     app.add_middleware(PureASGISecurityMiddleware, config=config)
     logger.info(
-        "Security guard enabled: rate_limit=%s/%ss trusted_proxies=%s whitelist=%s blacklist=%s",
+        "Security guard enabled: rate_limit=%s/%ss trusted_proxies=%s exempt_ips=%s whitelist=%s blacklist=%s",
         settings["rate_limit"],
         settings["rate_limit_window"],
         settings["trusted_proxies"],
+        settings["exempt_ips"],
         len(settings["whitelist"]),
         len(settings["blacklist"]),
     )
