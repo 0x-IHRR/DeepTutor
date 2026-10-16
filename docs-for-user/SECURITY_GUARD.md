@@ -1,6 +1,6 @@
 # Optional request screening (fastapi-guard)
 
-DeepTutor can screen HTTP requests inside the backend with [fastapi-guard](https://github.com/Guard-Core/fastapi-guard). It is **off by default**. When it is off, the package is never imported and the middleware stack is unchanged.
+DeepTutor can screen HTTP requests inside the backend with [fastapi-guard](https://github.com/Guard-Core/fastapi-guard). It is **off by default**. When it is off, the package is never imported and the middleware stack is unchanged. Like any new setting, `system.json` gains the disabled `security_guard` block with its defaults on the next load, and a malformed block is replaced by the defaults.
 
 The guard is an application-layer control. It complements a reverse proxy, WAF or firewall at the edge, and it keeps working when the backend port is reached without one (for example a published `:8001`, `deeptutor serve` on a LAN, or a tunnel).
 
@@ -11,7 +11,7 @@ For every HTTP request it checks, in this order of concern:
 - **IP lists**: an optional allowlist (only listed addresses pass) and an optional denylist.
 - **Rate limit**: a sliding window per client address, 300 requests per 60 seconds by default.
 - **Ban list**: an address that triggers repeated attack-pattern matches is blocked for a while.
-- **Attack-pattern scan** of the URL path, query string and headers (XSS, SQL injection, path traversal and similar). A match returns `400`.
+- **Attack-pattern scan** of the URL path, query string and headers (XSS, SQL injection, path traversal and similar). A match returns `400`. The `ssrf` category is turned off because browsers send the page address as `Referer` and guard-core 4.4.0 flags localhost and LAN addresses in it, so SSRF patterns are not screened; this is to be revisited when the engine fix ships.
 
 Rejected requests return `429` (rate limit) or `403` (IP lists, ban). The guard sits inside `CORSMiddleware`, so those responses still carry CORS headers and the browser shows the real status instead of an opaque CORS error.
 
@@ -73,6 +73,8 @@ python -m uvicorn deeptutor.api.main:app --host 0.0.0.0 --port 8001 --no-proxy-h
 ```
 
 If a reverse proxy sits in front of the backend, add its address to `trusted_proxies`; otherwise every client looks like the proxy. The guard warns when it bans a private address because of this.
+
+Dual-stack binds: with guard-core 4.4.0, a peer reported in IPv4-mapped form (`::ffff:a.b.c.d`, as on a dual-stack `::` bind) is not matched against IPv4 `trusted_proxies` entries, so a reverse proxy's `X-Forwarded-For` is ignored and all its clients share the proxy's bucket. The default launch paths bind `0.0.0.0` and are not affected. If you bind `::`, also list the mapped form of each proxy, for example `["10.0.0.0/8", "::ffff:10.0.0.0/104"]` (checked with guard-core 4.4.0, and covered by a test). Later guard-core versions may not need this.
 
 **Bundled frontend.** The Next.js proxy (`web/proxy.ts`) deletes `X-Forwarded-For` and the other forwarded headers from browser requests (`web/lib/backend-forward.ts`) and does not add the browser's address. Requests that reach the backend through it all arrive from the frontend's own address (loopback in the default layout), with no forwarded header. One shared limit would throttle every user together, so `exempt_ips` (default `127.0.0.1` and `::1`) exempts that address from the rate limit. Through the frontend, requests are therefore screened for attack patterns and the denylist, but not rate-limited. Per-client limits apply to requests that reach the backend directly, or through a reverse proxy that sets `X-Forwarded-For` and is listed in `trusted_proxies` (with `exempt_ips` containing loopback, a loopback request that carries `X-Forwarded-For` is limited as the forwarded client). `exempt_ips` skips the rate limit only: the denylist, bans and the attack-pattern scan still apply to listed addresses. The guard does not ban loopback addresses.
 

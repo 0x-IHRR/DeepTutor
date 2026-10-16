@@ -41,6 +41,7 @@ def build_security_config(settings: dict[str, Any]) -> Any:
         from guard import SecurityConfig
     except ImportError as exc:
         raise RuntimeError(INSTALL_HINT) from exc
+    from guard_core.handlers.suspatterns_handler import ALL_DETECTION_CATEGORIES
 
     return SecurityConfig(
         rate_limit=settings["rate_limit"],
@@ -56,6 +57,9 @@ def build_security_config(settings: dict[str, Any]) -> Any:
         security_headers={"enabled": False},
         # Prompts, documents and chat messages are free text, not attack input.
         detection_scan_body=False,
+        # Browsers send the page URL as Referer; guard-core 4.4.0 flags localhost and
+        # LAN addresses in it as ssrf (400), so that category stays off.
+        enabled_detection_categories=ALL_DETECTION_CATEGORIES - {"ssrf"},
         enable_agent=False,
     )
 

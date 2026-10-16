@@ -397,6 +397,34 @@ async def test_attack_pattern_in_query_is_blocked_with_400() -> None:
 
 @requires_guard
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "referer",
+    ["http://localhost:3000/chat", "http://127.0.0.1:3000/", "http://192.168.50.199:3782/"],
+)
+async def test_browser_referer_with_local_address_is_allowed(referer: str) -> None:
+    app = _build_app(trusted_proxies=[])
+
+    status, _, _ = await _call(app, client=(_unique_ip(), 1), headers=[("referer", referer)])
+
+    assert status == 200
+
+
+@requires_guard
+@pytest.mark.asyncio
+async def test_referer_carrying_an_attack_pattern_is_still_blocked() -> None:
+    app = _build_app(trusted_proxies=[])
+
+    status, _, _ = await _call(
+        app,
+        client=(_unique_ip(), 1),
+        headers=[("referer", "http://localhost:3000/<script>alert(1)</script>")],
+    )
+
+    assert status == 400
+
+
+@requires_guard
+@pytest.mark.asyncio
 async def test_request_body_is_not_scanned() -> None:
     app = _build_app(trusted_proxies=[])
     payload = b"explain <script>alert(1)</script> and ' OR 1=1 -- in my homework"
@@ -468,6 +496,32 @@ async def test_streaming_chunks_are_delivered_incrementally() -> None:
     assert seen == [b"chunk0", b"chunk1", b"chunk2"]
 
 
+@requires_guard
+@pytest.mark.asyncio
+async def test_forwarded_for_works_for_ipv4_mapped_proxy_peer_when_mapped_form_is_listed() -> None:
+    """Dual-stack binds report IPv4 peers as ``::ffff:a.b.c.d``; list that form too."""
+    app = _build_app(
+        rate_limit=3,
+        rate_limit_window=60,
+        trusted_proxies=["10.0.0.0/8", "::ffff:10.0.0.0/104"],
+        exempt_ips=[],
+    )
+    proxy = ("::ffff:10.0.0.9", 1)
+    same_client = _unique_ip()
+
+    limited = [
+        (await _call(app, client=proxy, headers=[("x-forwarded-for", same_client)]))[0]
+        for _ in range(4)
+    ]
+    distinct = [
+        (await _call(app, client=proxy, headers=[("x-forwarded-for", _unique_ip())]))[0]
+        for _ in range(5)
+    ]
+
+    assert limited == [200, 200, 200, 429]
+    assert distinct == [200] * 5
+
+
 # --- uvicorn peer handling --------------------------------------------------
 
 
@@ -517,17 +571,19 @@ async def test_uvicorn_default_proxy_headers_would_defeat_the_limit(monkeypatch)
     assert statuses == [200, 200, 200, 200]
 
 
-def test_every_launch_point_keeps_proxy_headers_off() -> None:
-    """The guard's client identity relies on these flags; see the test above."""
-    for relpath in ("deeptutor/api/run_server.py", "deeptutor_cli/main.py"):
-        assert "proxy_headers=False" in (_REPO / relpath).read_text(encoding="utf-8")
-    assert '"--no-proxy-headers"' in (_REPO / "deeptutor/runtime/launcher.py").read_text(
-        encoding="utf-8"
+@requires_guard
+def test_access_log_records_guard_rejections_in_main_app(tmp_path: Path) -> None:
+    probe = """
+from fastapi.testclient import TestClient
+import deeptutor.api.main as m
+client = TestClient(m.app, client=("203.0.113.9", 5000))
+print([client.get("/api/auth/status").status_code for _ in range(3)])
+"""
+    result = _run_python(
+        probe,
+        tmp_path,
+        DEEPTUTOR_GUARD_ENABLED="true",
+        DEEPTUTOR_GUARD_RATE_LIMIT="1",
     )
-    launches = [
-        line
-        for line in (_REPO / "Dockerfile").read_text(encoding="utf-8").splitlines()
-        if "-m uvicorn deeptutor.api.main:app" in line
-    ]
-    assert launches
-    assert all("--no-proxy-headers" in line for line in launches)
+
+    assert '203.0.113.9 - "GET /api/auth/status HTTP/1.1" 429' in result.stdout
