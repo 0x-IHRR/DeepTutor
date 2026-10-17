@@ -168,6 +168,7 @@ class TurnRequest(BaseModel):
     mastery_path_lease_managed: bool = False
     mastery_answer: MasteryCardAnswer | None = None
     mastery_skip: MasteryCardSkip | None = None
+    note_document_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{8,32}$")
     reading_material_id: str | None = None
     reading_material_revision: int | None = Field(default=None, ge=1)
     reading_workspace_id: str | None = None

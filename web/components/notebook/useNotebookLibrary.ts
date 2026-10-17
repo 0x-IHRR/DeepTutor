@@ -123,7 +123,12 @@ export function useNotebookLibrary(
       setNotebooks(next);
       setSelectedId((current) => {
         const allowed = next.filter((notebook) => inScope(notebook.id));
-        if (current && allowed.some((n) => n.id === current)) return current;
+        if (
+          current &&
+          (current === previousRouteIdRef.current ||
+            allowed.some((n) => n.id === current))
+        )
+          return current;
         return allowed.length ? allowed[0].id : null;
       });
     } catch (err) {
@@ -288,9 +293,11 @@ export function useNotebookLibrary(
         );
         adjustCount(selectedId, -1);
       }
-      adjustCount(targetNotebookId, 1);
+      // A multi-collection save can already exist at the destination.
+      // Re-read counts instead of inventing an additional record.
+      await reload();
     },
-    [selectedId, adjustCount],
+    [selectedId, adjustCount, reload],
   );
 
   return useMemo(

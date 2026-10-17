@@ -1,5 +1,8 @@
 "use client";
 
+import dynamic from "next/dynamic";
+const NoteReview = dynamic(() => import("@/features/notes/components/NoteReview"), { ssr: false });
+
 import { FeaturePage, PageHeader, pageActionClass, pageGridClass } from '@/components/layout/FeaturePage'
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -188,6 +191,7 @@ export default function CoWriterHomePage() {
           description={t("Manage your markdown drafts and projects.")}
           action={
           <div className="flex shrink-0 items-center gap-2">
+            <NoteReview/>
             <button
               type="button"
               onClick={() => importInputRef.current?.click()}

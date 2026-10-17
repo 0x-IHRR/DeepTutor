@@ -1,9 +1,14 @@
 "use client";
 
+import { favoriteSnapshot, favoriteKind, FAVORITE_LABELS } from "@/lib/favorite-content";
+import { favoriteRecordRoute } from "@/lib/resource-routes";
 import Tooltip from "@/shared/ui/Tooltip";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import {
+  BookOpen,
+  FileQuestion,
+  Calculator,
   Bot,
   ChevronRight,
   ExternalLink,
@@ -19,9 +24,20 @@ import NotebookRecordActions from "@/components/notebook/NotebookRecordActions";
 import { notify } from "@/lib/notifications";
 import type { NotebookRecordItem, NotebookSummary } from "@/lib/notebook-api";
 
+const FavoriteContent = dynamic(() => import("./NotebookFavoriteContent"), {
+  ssr: false,
+});
+
+const AddToNote = dynamic(
+  () => import("@/features/notes/components/AddToNote"),
+  { ssr: false },
+);
+
 const MarkdownRenderer = dynamic(
   () => import("@/components/common/MarkdownRenderer"),
-  { ssr: false },
+  {
+    ssr: false,
+  },
 );
 
 interface NotebookRecordRowProps {
@@ -47,6 +63,9 @@ const BADGES: Record<
   string,
   { labelKey: string; className: string; icon: typeof MessageSquare }
 > = {
+  reading: { labelKey: "Reading", className: "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300", icon: BookOpen },
+  question: { labelKey: "Question", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300", icon: FileQuestion },
+  solve: { labelKey: "Solution", className: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300", icon: Calculator },
   chat: {
     labelKey: "Chat",
     className: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
@@ -65,7 +84,7 @@ const BADGES: Record<
     icon: Search,
   },
   co_writer: {
-    labelKey: "Co-Writer",
+    labelKey: "Learning notebook",
     className:
       "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
     icon: Pencil,
@@ -116,7 +135,7 @@ export default function NotebookRecordRow({
     setDraftOutput(record.output ?? "");
   }, [record.id, record.title, record.summary, record.output, editing]);
 
-  const badge = BADGES[record.type] ?? null;
+  const badge = BADGES[favoriteKind(record.type, record.metadata)] ?? null;
   const BadgeIcon = badge?.icon ?? FALLBACK_BADGE.icon;
   const partnerName =
     typeof record.metadata?.partner_name === "string"
@@ -126,7 +145,7 @@ export default function NotebookRecordRow({
     ? record.type === "tutorbot" && partnerName
       ? partnerName
       : t(badge.labelKey)
-    : record.type;
+    : t(FAVORITE_LABELS[favoriteKind(record.type, record.metadata)] || "Favorite content");
 
   const sessionId = String(record.metadata?.session_id ?? "");
   const canOpenSession = record.type === "chat" && Boolean(sessionId);
@@ -177,7 +196,6 @@ export default function NotebookRecordRow({
       if (draftTitle !== record.title) changes.title = draftTitle.trim();
       if (draftSummary !== (record.summary ?? ""))
         changes.summary = draftSummary;
-      if (draftOutput !== (record.output ?? "")) changes.output = draftOutput;
       if (Object.keys(changes).length) await onEdit(record.id, changes);
       setEditing(false);
       notify(t("Record saved"), { tone: "success" });
@@ -255,20 +273,20 @@ export default function NotebookRecordRow({
           {timestamp}
         </span>
 
-          <Tooltip label={t("Edit record")} side="top">
-            <button
-              type="button"
-              disabled={busy}
-              aria-label={t("Edit record")}
-              onClick={() => {
-                if (!expanded) onToggle();
-                startEditing();
-              }}
-              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] opacity-60 transition-[background-color,color,opacity,transform] duration-150 active:scale-[0.97] hover:bg-[var(--muted)] hover:text-[var(--foreground)] hover:opacity-100 focus-visible:bg-[var(--muted)] focus-visible:text-[var(--foreground)] focus-visible:opacity-100 focus-visible:outline-none disabled:opacity-30"
-            >
-              <Pencil size={14} />
-            </button>
-          </Tooltip>
+        <Tooltip label={t("Edit favorite details")} side="top">
+          <button
+            type="button"
+            disabled={busy}
+            aria-label={t("Edit favorite details")}
+            onClick={() => {
+              if (!expanded) onToggle();
+              startEditing();
+            }}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] opacity-60 transition-[background-color,color,opacity,transform] duration-150 active:scale-[0.97] hover:bg-[var(--muted)] hover:text-[var(--foreground)] hover:opacity-100 focus-visible:bg-[var(--muted)] focus-visible:text-[var(--foreground)] focus-visible:opacity-100 focus-visible:outline-none disabled:opacity-30"
+          >
+            <Pencil size={14} />
+          </button>
+        </Tooltip>
 
         <NotebookRecordActions
           targets={moveTargets}
@@ -332,12 +350,19 @@ export default function NotebookRecordRow({
                 </button>
               )}
               <div className="max-h-[420px] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--muted)]/25 px-3 py-2.5">
-                <MarkdownRenderer
-                  content={record.output || ""}
-                  variant="prose"
-                  className="text-[12.5px] leading-relaxed text-[var(--foreground)]"
+                <FavoriteContent
+                  type={record.type}
+                  markdown={record.output || ""}
+                  metadata={record.metadata}
                 />
               </div>
+              <AddToNote
+                title={record.title}
+                markdown={record.output || ""}
+                sourceId={record.id}
+                favorite={favoriteSnapshot(record)}
+                sourceUrl={favoriteRecordRoute(currentNotebookId, record.id)}
+              />
             </>
           )}
         </div>
@@ -391,7 +416,6 @@ function RecordEditor({
   dirty,
   onTitleChange,
   onSummaryChange,
-  onOutputChange,
   onTogglePreview,
   onSave,
   onCancel,
@@ -432,6 +456,11 @@ function RecordEditor({
         />
       </div>
 
+      <p className="px-3 py-2 text-xs text-[var(--muted-foreground)]">
+        {t(
+          "Original content is preserved. Add it to a note to edit and organize it.",
+        )}
+      </p>
       <div className="flex items-center justify-between border-b border-[var(--border)]/70 bg-[var(--muted)]/25 px-3 py-1.5">
         <span className="text-[10.5px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
           {t("Body")}
@@ -444,7 +473,7 @@ function RecordEditor({
           className="flex items-center gap-0.5 rounded-lg bg-[var(--muted)]/70 p-0.5"
         >
           {[
-            { key: "write", label: t("Write"), active: !previewing },
+            { key: "write", label: t("Source text"), active: !previewing },
             { key: "preview", label: t("Preview"), active: previewing },
           ].map((tab) => (
             <button
@@ -478,7 +507,7 @@ function RecordEditor({
       ) : (
         <textarea
           value={output}
-          onChange={(e) => onOutputChange(e.target.value)}
+          readOnly
           rows={14}
           spellCheck={false}
           aria-label={t("Body")}

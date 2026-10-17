@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
   Download,
   Loader2,
-  NotebookPen,
+  Bookmark,
   Pencil,
   Plus,
   School,
@@ -25,6 +25,7 @@ import { attachCourseResource } from "@/lib/courses-api";
 import { notify } from "@/lib/notifications";
 import {
   exportNotebookMarkdown,
+  locateFavoriteRecord,
   type NotebookSummary,
 } from "@/lib/notebook-api";
 import { notebookRoute } from "@/lib/resource-routes";
@@ -52,6 +53,7 @@ export interface NotebookCourseScope {
 interface NotebookConsoleProps {
   /** Notebook to open on arrival from `/notebooks/<id>`. */
   initialNotebookId?: string | null;
+  initialRecordId?: string | null;
   /** Present when arriving from a course; narrows the library to its notebooks. */
   courseScope?: NotebookCourseScope | null;
   /** Called after this console attaches something to the course, so the route can re-read it. */
@@ -60,6 +62,7 @@ interface NotebookConsoleProps {
 
 export default function NotebookConsole({
   initialNotebookId,
+  initialRecordId = null,
   courseScope = null,
   onScopeChanged,
 }: NotebookConsoleProps) {
@@ -73,7 +76,9 @@ export default function NotebookConsole({
 
   const [notebookQuery, setNotebookQuery] = useState("");
   const [recordQuery, setRecordQuery] = useState("");
-  const [expandedRecordId, setExpandedRecordId] = useState<string | null>(null);
+  const expandedRecordId = initialRecordId;
+  const recordRef = useRef<HTMLDivElement>(null);
+  const [recordError, setRecordError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -93,9 +98,61 @@ export default function NotebookConsole({
   // Default selection, scope repair, create, and delete can all change the
   // visible resource without a click. Keep the address bar canonical too.
   useEffect(() => {
-    if (!selectedId || selectedId === initialNotebookId) return;
+    if (!selectedId || initialNotebookId) return;
     router.replace(notebookRoute(selectedId, courseId));
   }, [courseId, initialNotebookId, router, selectedId]);
+
+  // Resolve moved favorites only after the requested collection has loaded.
+  // Never silently open an unrelated record when a saved source is gone.
+  useEffect(() => {
+    let cancelled = false;
+    setRecordError(null);
+    if (
+      !initialRecordId ||
+      !initialNotebookId ||
+      library.loading ||
+      library.detailLoading ||
+      selectedId !== initialNotebookId
+    )
+      return;
+    if (
+      selected?.id === initialNotebookId &&
+      selected.records.some((record) => record.id === initialRecordId)
+    ) {
+      recordRef.current?.scrollIntoView({ block: "start" });
+      return;
+    }
+    if (selected && selected.id !== initialNotebookId) return;
+    if (!selected && !library.detailError) return;
+    void locateFavoriteRecord(initialRecordId, initialNotebookId)
+      .then((collectionId) => {
+        if (cancelled) return;
+        if (collectionId && collectionId !== initialNotebookId) {
+          router.replace(notebookRoute(collectionId, null, initialRecordId));
+        } else {
+          setRecordError(t("This favorite is no longer available."));
+        }
+      })
+      .catch(() => {
+        if (!cancelled)
+          setRecordError(
+            t("Could not locate this favorite. Try reopening the source link."),
+          );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    initialRecordId,
+    initialNotebookId,
+    library.loading,
+    library.detailLoading,
+    library.detailError,
+    selected,
+    selectedId,
+    router,
+    t,
+  ]);
 
   // How many notebooks exist *for this visit*. Everything the console counts —
   // the badge, whether a filter box is worth showing, which empty state to use
@@ -138,12 +195,14 @@ export default function NotebookConsole({
     const records = selected?.records ?? [];
     const needle = recordQuery.trim().toLowerCase();
     if (!needle) return records;
-    return records.filter((record) =>
-      `${record.title} ${record.summary ?? ""} ${record.output ?? ""}`
-        .toLowerCase()
-        .includes(needle),
+    return records.filter(
+      (record) =>
+        record.id === initialRecordId ||
+        `${record.title} ${record.summary ?? ""} ${record.output ?? ""}`
+          .toLowerCase()
+          .includes(needle),
     );
-  }, [selected, recordQuery]);
+  }, [selected, recordQuery, initialRecordId]);
 
   const handleCreate = useCallback(async () => {
     const name = newName.trim();
@@ -269,7 +328,7 @@ export default function NotebookConsole({
 
           <div className="flex items-center justify-between">
             <h1 className="flex items-center gap-1.5 font-serif text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
-              <NotebookPen size={14} strokeWidth={1.7} />
+              <Bookmark size={14} strokeWidth={1.7} />
               {t("Notebooks")}
               <span className="rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-normal tabular-nums text-[var(--muted-foreground)]">
                 {scopedNotebooks.length}
@@ -521,6 +580,14 @@ export default function NotebookConsole({
 
       {/* ── Records ───────────────────────────────────────── */}
       <section className="flex min-w-0 flex-1 flex-col">
+        {recordError && (
+          <p
+            role="alert"
+            className="border-b border-[var(--border)] bg-[var(--muted)] px-4 py-3 text-sm"
+          >
+            {recordError}
+          </p>
+        )}
         {banner && (
           <div
             role="alert"
@@ -607,7 +674,7 @@ export default function NotebookConsole({
                 </div>
               </div>
 
-              {(selected?.records.length ?? 0) > 8 && (
+              {(selected?.records.length ?? 0) > 0 && (
                 <div className="relative">
                   <Search
                     size={12}
@@ -631,22 +698,33 @@ export default function NotebookConsole({
               ) : visibleRecords.length ? (
                 <div className="divide-y divide-[var(--border)]/70">
                   {visibleRecords.map((record) => (
-                    <NotebookRecordRow
+                    <div
                       key={record.id}
-                      record={record}
-                      notebooks={notebooks}
-                      currentNotebookId={selected!.id}
-                      expanded={expandedRecordId === record.id}
-                      onToggle={() =>
-                        setExpandedRecordId(
-                          expandedRecordId === record.id ? null : record.id,
-                        )
+                      ref={
+                        record.id === initialRecordId ? recordRef : undefined
                       }
-                      onEdit={library.editRecord}
-                      onDelete={library.removeRecord}
-                      onRelocate={library.relocateRecord}
-                      onOpenSession={openSession}
-                    />
+                      className="scroll-mt-3"
+                    >
+                      <NotebookRecordRow
+                        record={record}
+                        notebooks={notebooks}
+                        currentNotebookId={selected!.id}
+                        expanded={expandedRecordId === record.id}
+                        onToggle={() =>
+                          router.replace(
+                            notebookRoute(
+                              selected!.id,
+                              courseId,
+                              expandedRecordId === record.id ? null : record.id,
+                            ),
+                          )
+                        }
+                        onEdit={library.editRecord}
+                        onDelete={library.removeRecord}
+                        onRelocate={library.relocateRecord}
+                        onOpenSession={openSession}
+                      />
+                    </div>
                   ))}
                 </div>
               ) : (
@@ -736,7 +814,7 @@ function ConsoleNotice({
   detail: string;
   action?: React.ReactNode;
 }) {
-  const Icon = tone === "error" ? AlertTriangle : NotebookPen;
+  const Icon = tone === "error" ? AlertTriangle : Bookmark;
   return (
     <div
       role={tone === "error" ? "alert" : undefined}

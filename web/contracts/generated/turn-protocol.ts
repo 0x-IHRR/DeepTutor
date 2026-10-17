@@ -52,6 +52,7 @@ export type Mcp = string[];
 export type MemoryReferences = (
   "recent" | "profile" | "scope" | "preferences" | "summary"
 )[];
+export type NoteDocumentId = string | null;
 export type NotebookId = string;
 export type RecordIds = string[];
 export type NotebookReferences = NotebookReference[];
@@ -298,6 +299,7 @@ export interface StartTurnCommand {
   mastery_skip?: MasteryCardSkip | null;
   mcp?: Mcp;
   memory_references?: MemoryReferences;
+  note_document_id?: NoteDocumentId;
   notebook_references?: NotebookReferences;
   parent_message_id?: ParentMessageId;
   partner_discussion_group_id?: PartnerDiscussionGroupId;

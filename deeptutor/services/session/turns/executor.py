@@ -979,6 +979,7 @@ class TurnExecutor:
                     # Immersive reading: the open material activates the reading
                     # capability and binds its tools; the viewport tells the
                     # model where the user is actually looking.
+                    "note_document_id": payload.get("note_document_id"),
                     "reading_material_id": _reading_material_id(payload.get("reading_material_id")),
                     "reading_material_revision": _reading_material_revision(
                         payload.get("reading_material_revision")

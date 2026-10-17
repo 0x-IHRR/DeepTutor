@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 
-import CoWriterWorkspace from "@/features/co-writer/components/CoWriterWorkspace";
+import NoteWorkspace from "@/features/notes/components/NoteWorkspace";
 
 export default function CoWriterPage() {
   const params = useParams<{ docId?: string | string[] }>();
@@ -11,5 +11,5 @@ export default function CoWriterPage() {
     ? (rawDocId[0] ?? "")
     : (rawDocId ?? "");
 
-  return <CoWriterWorkspace docId={docId} />;
+  return <NoteWorkspace key={docId} docId={docId} />;
 }

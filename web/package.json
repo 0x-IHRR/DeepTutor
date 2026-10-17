@@ -33,6 +33,8 @@
     "build:brand-icons": "tsx ./scripts/build-brand-icons.mts"
   },
   "dependencies": {
+    "@blocknote/core": "0.56.0",
+    "@blocknote/react": "0.56.0",
     "@recogito/text-annotator": "4.2.5",
     "chart.js": "^4.5.1",
     "clsx": "^2.1.1",
@@ -44,6 +46,7 @@
     "html2canvas": "^1.4.1",
     "i18next": "^25.8.0",
     "jspdf": "^4.2.0",
+    "katex": "0.16.27",
     "lucide-react": "^0.562.0",
     "mdast-util-from-markdown": "^2.0.2",
     "mermaid": "^11.14.0",

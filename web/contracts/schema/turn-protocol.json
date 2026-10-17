@@ -1038,6 +1038,19 @@
           "title": "Memory References",
           "type": "array"
         },
+        "note_document_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8,32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note Document Id"
+        },
         "notebook_references": {
           "items": {
             "$ref": "#/$defs/NotebookReference"
