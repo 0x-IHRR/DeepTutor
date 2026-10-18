@@ -86,7 +86,7 @@ async def test_valid_packet_is_reused_without_new_preparation(preparation, monke
     preparation.paid.assert_not_awaited()
     assert pixels.call_count == 1
     assert pixels.call_args.args == (evidence["sources"][:2],)
-    preparation.stream.sources.assert_awaited_once()
+    preparation.stream.sources.assert_not_awaited()
     assert len(messages) == 1 and messages[0]["content"] == "VERIFIED ACTIVE LESSON"
 
 

@@ -96,7 +96,8 @@ LOOP_STAGE = "responding"
 # Settlement is deliberately small but large enough for the longest built-in
 # interaction boundary: register state -> ask/resume -> record result -> reply.
 # A single additional tool-less hard finish follows if all of these rounds
-# still request tools, making the total upper bound ``exploration + 4``.
+# still request tools. A receipt-backed capability delivery can use that final
+# round instead, with a restricted tool surface: the bound stays exploration + 4.
 MAX_SETTLEMENT_ROUNDS = 3
 # Reasoning-only completions can recur when a model rewrites its plan instead
 # of acting. Give it a stronger directive on the second miss, then use the
@@ -445,19 +446,37 @@ class AgentLoop:
         settlement_started = False
         reasoning_only_recoveries = 0
         finish_redirect_used = False
+        recovery_tools: frozenset[str] | None = None
+        recovery_schemas: list[dict[str, Any]] | None = None
         continued_answer_parts: list[str] = []
         while True:
             settling = state.exploration_rounds >= exploration_budget
             if settling:
                 if state.settlement_rounds >= MAX_SETTLEMENT_ROUNDS:
-                    # A model may ignore the settlement directive and keep
-                    # requesting tools. One tool-less call is the absolute
-                    # stop, so malformed/empty tool cycles cannot run forever.
-                    return await self._forced_finish(
-                        messages,
-                        state,
-                        continued_answer_parts=continued_answer_parts,
-                    )
+                    if recovery_tools is not None:
+                        return await self._reject_capability_finish()
+                    recovery = self.pipeline._capability_settlement_recovery(self.context)
+                    if recovery is not None:
+                        instruction, names = recovery
+                        recovery_schemas = [
+                            schema
+                            for schema in self.tool_schemas or []
+                            if (schema.get("function") or {}).get("name") in names
+                        ]
+                        recovery_tools = frozenset(
+                            schema["function"]["name"] for schema in recovery_schemas
+                        )
+                        if not recovery_tools:
+                            return await self._reject_capability_finish()
+                        self._append_loop_instruction(messages, instruction)
+                    else:
+                        # Tool-less salvage and restricted delivery share the
+                        # same final slot; neither can reopen exploration.
+                        return await self._forced_finish(
+                            messages,
+                            state,
+                            continued_answer_parts=continued_answer_parts,
+                        )
                 if not settlement_started:
                     await self._begin_settlement(messages)
                     settlement_started = True
@@ -468,7 +487,9 @@ class AgentLoop:
                     call_kind="agent_loop_round",
                     trace_role="response" if settling else "explore",
                     max_tokens=self.pipeline.loop_max_tokens,
-                    tool_schemas=self.tool_schemas,
+                    tool_schemas=recovery_schemas
+                    if recovery_tools is not None
+                    else self.tool_schemas,
                     defer_visible_output=self.pipeline._capability_buffers_visible_output(
                         self.context
                     ),
@@ -506,6 +527,14 @@ class AgentLoop:
                 state.settlement_rounds += 1
             else:
                 state.exploration_rounds += 1
+            if recovery_tools is not None and any(
+                str(call.get("name") or "").strip() not in recovery_tools
+                for call in result.tool_calls
+            ):
+                # Provider schema hints are not an execution permission. Reject
+                # the entire batch before binding or dispatching any rogue tool.
+                await self._discard_deferred_output(result)
+                return await self._reject_capability_finish()
             if not result.tool_calls:
                 final_text = self._clean(result.text)
                 if _finish_was_truncated(result.finish_reason) or _reasoning_budget_exhausted(

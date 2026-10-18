@@ -78,7 +78,6 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
             cached_lesson,
             image_message,
             lesson_context,
-            public_sources,
             selected_scope,
         )
         from deeptutor.learning.policy import next_objective
@@ -206,9 +205,6 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
                 await asyncio.to_thread(image_message, evidence["sources"][:2]),
             )
             self._lesson_pixels = pixels
-            await stream.sources(
-                public_sources(evidence), source="mastery_path", stage="responding"
-            )
         return [pixels[1]]
 
     async def _retrieve_kb_seed_block(self, context, stream):

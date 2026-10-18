@@ -640,6 +640,21 @@ def test_final_repair_gap_preserves_already_inspected_useful_sources(material, m
     assert evidence["sources"][0]["ref"]["page_index"] == 70
 
 
+@pytest.mark.parametrize("changed_support", [False, True])
+def test_repair_reuses_only_identical_successful_inspection(material, monkeypatch, changed_support):
+    repaired = _partial_selection()
+    if changed_support:
+        repaired["selected"][0]["reason"] = "A different relationship needs inspection"
+    calls = _install_preparation(
+        material, monkeypatch, rankings=[_partial_selection(repair=True), repaired]
+    )
+    evidence = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    pixel_calls = [payload for payload, images in calls if images]
+    assert len(pixel_calls) == (2 if changed_support else 1)
+    assert evidence["sources"] and evidence["model_observations"]
+    assert not evidence["coverage"]["complete"]
+
+
 def test_focus_and_current_request_reach_preparation_without_extra_cache_calls(
     material, monkeypatch
 ):
@@ -1049,6 +1064,59 @@ def test_repair_checks_original_with_detail_even_for_second_source(material):
     )
     assert result[0] is sources[1] and result[1]["ref"]["crop"]
     assert result[2] is sources[0]
+
+
+def test_selection_id_without_quote_preserves_original_evidence(material, monkeypatch):
+    calls = _install_preparation(
+        material,
+        monkeypatch,
+        rankings=[{"sufficient": True, "selected": [{"id": "c0", "reason": "Membrane structure"}]}],
+    )
+    evidence = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    source = evidence["sources"][0]
+    candidate = calls[1][0]["candidates"][0]
+    assert source["text"] == candidate["text"]
+    assert source["quote"] == candidate["text"][:300]
+    assert calls[2][0]["sources"][0]["text"] == candidate["text"]
+    assert calls[2][1] and len(calls) == 3
+
+
+def test_selection_unknown_id_without_quote_is_rejected(material, monkeypatch):
+    _install_preparation(
+        material,
+        monkeypatch,
+        rankings=[
+            {
+                "sufficient": True,
+                "selected": [{"id": "not-retrieved", "reason": "Membrane structure"}],
+            }
+        ],
+    )
+    with pytest.raises(lessons.LessonUnavailable, match="source ID"):
+        asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    assert not material.store.load("path").lesson_evidence
+
+
+@pytest.mark.parametrize(
+    "original,quote",
+    [
+        ("prefix lipids\n\tform a\u00a0bilayer suffix", "lipids form a bilayer"),
+        ("prefix cafe\u0301 membrane suffix", "caf\u00e9 membrane"),
+        ("prefix caf\u00e9 membrane suffix", "cafe\u0301 membrane"),
+    ],
+)
+def test_legacy_selection_quote_normalization_preserves_original(original, quote):
+    excerpt = lessons._selection_excerpt(original, {"quote": quote})
+    assert excerpt in original
+    assert excerpt == original[len("prefix ") : -len(" suffix")]
+
+
+@pytest.mark.parametrize(
+    "quote", ["membranes are made of lipids", "LIPIDS form a bilayer", "", "bilayer"]
+)
+def test_legacy_selection_quote_never_accepts_paraphrase_or_invalid_length(quote):
+    with pytest.raises(lessons.LessonUnavailable, match="quotation"):
+        lessons._selection_excerpt("Membrane lipids form a bilayer.", {"quote": quote})
 
 
 def test_unknown_quote_is_not_ready_and_not_mastery(material, monkeypatch):

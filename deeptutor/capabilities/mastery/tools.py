@@ -1137,6 +1137,9 @@ class MasteryQuizTool(BaseTool):
             ],
         )
         leaf_parameters = {p.name: p.to_schema() for p in definition.parameters}
+        from deeptutor.learning.visual_practice import visual_request_schema
+
+        leaf_parameters["visual"].update(visual_request_schema())
         for parameter in definition.parameters:
             if parameter.name in {"knowledge_point_id", "question", "expected_answer"}:
                 parameter.required = False
@@ -1189,6 +1192,9 @@ class MasteryQuizTool(BaseTool):
                 ),
             ]
         )
+        schema = definition.to_openai_schema()["function"]["parameters"]
+        schema["properties"]["visual"].update(visual_request_schema())
+        definition.raw_parameters = schema
         return definition
 
     async def execute(self, **kwargs: Any) -> ToolResult:
@@ -1270,6 +1276,16 @@ class MasteryQuizTool(BaseTool):
             }
             leaves = []
             echoed_options = False
+            # Reject malformed assistance anywhere in the batch before the
+            # first leaf performs source/image inspection.
+            from deeptutor.learning.visual_practice import visual_hint_count
+
+            try:
+                for raw in raw_questions:
+                    if isinstance(raw, dict) and isinstance(raw.get("visual"), dict):
+                        visual_hint_count(raw["visual"].get("hints_used"))
+            except ValueError as exc:
+                return ToolResult(content=str(exc), success=False)
             for raw in raw_questions:
                 if (
                     not isinstance(raw, dict)
@@ -1772,9 +1788,7 @@ class MasteryGradeTool(BaseTool):
                 needs_clarification=interaction.result.get("needs_clarification", False),
                 feedback=interaction.result.get("feedback", ""),
                 confidence=interaction.result.get("confidence"),
-                independent=interaction.result.get("independent")
-                if pending.visual_context
-                else None,
+                independent=interaction.result.get("independent"),
             ),
             # A graded card is not an answer to the learner. The verdict and
             # the explanation are now on it, so the model that stops here
@@ -3687,7 +3701,7 @@ class MasteryPrepareLessonTool(BaseTool):
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="mastery_prepare_lesson",
-            description="Prepare source evidence for the next teaching or practice step within an objective. Reuses validated evidence. A partial packet supports teaching only its covered material; use a specific focus to resolve the evidence needed for a question and its key. For requested exam questions, focus on actual questions and solutions in the selected question bank, not merely topic summaries. Administrative discussion does not require preparation. Uses only the path's selected materials.",
+            description="Privately prepare source evidence for the next teaching or practice step within an objective; this does not display source pages to the learner. To intentionally show a teaching image, use rag with an exact source view and presentation=teaching; use presentation=reveal after an answer. Reuses validated evidence. A partial packet supports teaching only its covered material; use a specific focus to resolve the evidence needed for a question and its key. For requested exam questions, focus on actual questions and solutions in the selected question bank, not merely topic summaries. Administrative discussion does not require preparation. Uses only the path's selected materials.",
             parameters=[
                 ToolParameter(
                     name="knowledge_point_id",
@@ -3698,6 +3712,7 @@ class MasteryPrepareLessonTool(BaseTool):
                     name="focus",
                     type="string",
                     required=False,
+                    sensitive=True,
                     description="Optional next teaching step or assessment task within this objective, at most 600 characters. Include the requested source/task when relevant. Do not widen the objective or invent examination requirements.",
                 ),
                 ToolParameter(
@@ -3714,7 +3729,6 @@ class MasteryPrepareLessonTool(BaseTool):
             LessonUnavailable,
             lesson_context,
             prepare_lesson,
-            public_sources,
         )
         from deeptutor.services.llm.config import get_llm_config
 
@@ -3741,5 +3755,5 @@ class MasteryPrepareLessonTool(BaseTool):
             content=lesson_context(evidence)
             if evidence
             else "This objective has no selected PDF materials.",
-            sources=public_sources(evidence),
+            public_result={"content": "Lesson source evidence prepared privately."},
         )
