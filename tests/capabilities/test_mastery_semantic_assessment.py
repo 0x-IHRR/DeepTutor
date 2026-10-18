@@ -464,7 +464,10 @@ async def test_source_assessment_sends_pixels_with_no_silent_fallback(monkeypatc
 
     async def complete(**kwargs):
         assert kwargs["allow_image_fallback"] is False
-        assert kwargs["messages"][-1] == image
+        assert kwargs["messages"][-1]["role"] == "user"
+        assert [
+            part for part in kwargs["messages"][-1]["content"] if part["type"] == "image_url"
+        ] == image["content"]
         return '{"verdicts":[{"question_id":"q","result":"correct","confidence":0.99,"feedback":"The visual relationship matches."}]}'
 
     monkeypatch.setattr(factory, "complete_with_config", complete)
@@ -472,6 +475,77 @@ async def test_source_assessment_sends_pixels_with_no_silent_fallback(monkeypatc
         object(), [{"question_id": "q", "source_evidence": {"sources": [source]}}]
     )
     assert result["q"].result == "correct"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("shared", [True, False])
+async def test_group_visual_assessment_budgets_unique_pixels_and_retains_source_labels(
+    monkeypatch, shared
+):
+    from copy import deepcopy
+    import json
+
+    from deeptutor.learning import semantic_assessment as semantic
+    from deeptutor.services.llm import factory
+
+    items = [
+        {
+            "question_id": f"q{i}",
+            "answer": "The membrane separates the two compartments.",
+            "_visual_images": [
+                part
+                for page in range(2)
+                for part in (
+                    {"type": "text", "text": f"Question q{i}, source page {page}"},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,page-{page if shared else i * 2 + page}"
+                        },
+                    },
+                )
+            ],
+        }
+        for i in range(4)
+    ]
+    before = deepcopy(items)
+    requests = []
+
+    async def complete(**kwargs):
+        requests.append(kwargs)
+        parts = [
+            part
+            for message in kwargs["messages"]
+            if isinstance(message["content"], list)
+            for part in message["content"]
+        ]
+        assert sum(part["type"] == "image_url" for part in parts) == 2
+        for i in range(4):
+            assert any(f"Question q{i}, source page" in part.get("text", "") for part in parts)
+        assert kwargs["allow_image_fallback"] is False
+        return json.dumps(
+            {
+                "verdicts": [
+                    {
+                        "question_id": f"q{i}",
+                        "result": "correct",
+                        "confidence": 0.99,
+                        "feedback": "The relationship matches.",
+                    }
+                    for i in range(4)
+                ]
+            }
+        )
+
+    monkeypatch.setattr(factory, "complete_with_config", complete)
+    if shared:
+        verdicts = await semantic.judge_answers(object(), items)
+        assert len(verdicts) == 4 and len(requests) == 1
+    else:
+        with pytest.raises(semantic.AssessmentUnavailable, match="split the group"):
+            await semantic.judge_answers(object(), items)
+        assert not requests
+    assert items == before
 
 
 @pytest.mark.asyncio

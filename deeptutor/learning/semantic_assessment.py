@@ -94,6 +94,7 @@ async def _request(config, instruction, payload, sources=None, native_images=Non
     from deeptutor.learning.lesson_evidence import _json_response
     from deeptutor.services.llm.config import get_llm_config
     from deeptutor.services.llm.factory import complete_with_config
+    from deeptutor.services.llm.image_replay import deduplicate_user_images
 
     try:
         messages = [
@@ -113,6 +114,9 @@ async def _request(config, instruction, payload, sources=None, native_images=Non
                 messages.append(await asyncio.to_thread(image_message, list(unique.values())))
         if native_images:
             messages.append({"role": "user", "content": native_images})
+        # A group can assess several relationships on the same pages (#1901).
+        # Count actual unique pixels; retain each source label via references.
+        messages = deduplicate_user_images(messages)
         image_parts = [
             part
             for message in messages
@@ -137,6 +141,8 @@ async def _request(config, instruction, payload, sources=None, native_images=Non
             allow_image_fallback=False,
         )
         return _json_response(response)
+    except AssessmentUnavailable:
+        raise
     except Exception as exc:
         raise AssessmentUnavailable(
             "Assessment is unavailable; retry. No grade was saved."
