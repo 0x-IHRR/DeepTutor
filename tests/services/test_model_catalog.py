@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
+import threading
 from typing import Any
 
 import pytest
@@ -114,6 +115,51 @@ def test_load_recovers_invalid_catalog_with_defaults(tmp_path: Path):
     assert set(catalog["services"]) == expected_services
     saved = json.loads(catalog_path.read_text(encoding="utf-8"))
     assert set(saved["services"]) == expected_services
+
+
+def test_catalog_migration_read_cannot_overwrite_concurrent_settings_update(tmp_path, monkeypatch):
+    """A runtime read may migrate defaults while the settings endpoint saves."""
+    path = tmp_path / "model_catalog.json"
+    path.write_text(json.dumps({"version": 1, "services": {}}), encoding="utf-8")
+    service = ModelCatalogService(path)
+    read = service._read_existing_catalog
+    captured = threading.Event()
+    release = threading.Event()
+    updating = threading.Event()
+    reader_id = None
+
+    def paused_read():
+        value = read()
+        if threading.get_ident() == reader_id:
+            captured.set()
+            assert release.wait(5)
+        return value
+
+    def reader():
+        nonlocal reader_id
+        reader_id = threading.get_ident()
+        return service.load()
+
+    def writer():
+        updating.set()
+        return service.update(lambda catalog: catalog.update({"saved_selection": "new-model"}))
+
+    monkeypatch.setattr(service, "_read_existing_catalog", paused_read)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        loading = pool.submit(reader)
+        try:
+            assert captured.wait(5)
+            saving = pool.submit(writer)
+            assert updating.wait(5)
+            try:
+                saving.result(timeout=1)
+            except TimeoutError:
+                pass  # Correct serialization waits until the migration read completes.
+        finally:
+            release.set()
+        loading.result(timeout=5)
+        saving.result(timeout=5)
+    assert json.loads(path.read_text())["saved_selection"] == "new-model"
 
 
 @pytest.mark.parametrize("operation", ["load", "update", "apply"])
