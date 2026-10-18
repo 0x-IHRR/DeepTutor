@@ -14,6 +14,7 @@ import pytest
 from deeptutor.learning import lesson_evidence as lessons
 from deeptutor.learning.models import (
     KnowledgePoint,
+    LearnerProfile,
     LearningModule,
     LearningProgress,
     PendingQuestion,
@@ -479,6 +480,96 @@ def test_selector_uses_the_actual_module_learning_purpose(material, monkeypatch)
     assert selector_payload["module"] == "Cells"
     assert selector_payload["target_level"] == progress.learner_profile.target_level
     assert "course_goal" in selector_payload
+
+
+@pytest.mark.parametrize("field", ["course_goal", "target_level"])
+def test_changed_course_intent_reprepares_without_erasing_answer_evidence(
+    material, monkeypatch, field
+):
+    calls = _install_preparation(material, monkeypatch)
+    old = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    service = LearningService(material.store)
+    service.register_question(
+        "path", PendingQuestion(question_id="q", knowledge_point_id="kp", expected_answer="lipids")
+    )
+    if field == "course_goal":
+        topic = material.store.get_topic("path")
+        topic.metadata.goal = "Explain membrane transport for a graduate course."
+        material.store.put_topic(topic.metadata, topic.sources)
+    else:
+        progress = material.store.load("path")
+        progress.learner_profile = LearnerProfile(
+            target_level="Graduate mechanisms, not introductory names"
+        )
+        material.store.save(progress)
+    progress = material.store.load("path")
+    assert lessons.cached_lesson(material.store, progress, "kp", material.config) is None
+    fresh = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    assert fresh["id"] != old["id"] and len(calls) == 6
+    assert calls[4][0][field]
+    # Changed teaching intent does not change a previously verified factual key.
+    graded, _, _ = service.grade_interaction("path", question_id="q", answer="lipids")
+    assert len(graded.quiz_attempts) == 1 and graded.quiz_attempts[0].is_correct
+
+
+def test_pacing_feedback_keeps_valid_lesson_without_paid_repreparation(material, monkeypatch):
+    calls = _install_preparation(material, monkeypatch)
+    old = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    progress = material.store.load("path")
+    progress.learner_profile = LearnerProfile(preferences="Give shorter explanations")
+    material.store.save(progress)
+    current = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    assert current["id"] == old["id"] and len(calls) == 3
+
+
+@pytest.mark.parametrize("field", ["course_goal", "target_level"])
+def test_course_intent_change_during_preparation_cannot_publish_stale_packet(
+    material, monkeypatch, field
+):
+    _install_preparation(material, monkeypatch)
+    ask = lessons._ask
+
+    async def change_during_selection(*args, **kwargs):
+        result = await ask(*args, **kwargs)
+        if field == "course_goal":
+            topic = material.store.get_topic("path")
+            topic.metadata.goal = "Changed course requirements"
+            material.store.put_topic(topic.metadata, topic.sources)
+        else:
+            progress = material.store.load("path")
+            progress.learner_profile = LearnerProfile(target_level="Changed intended level")
+            material.store.save(progress)
+        return result
+
+    monkeypatch.setattr(lessons, "_ask", change_during_selection)
+    with pytest.raises(lessons.LessonUnavailable, match="changed"):
+        asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    assert not material.store.load("path").lesson_evidence
+
+
+@pytest.mark.asyncio
+async def test_cached_lesson_reports_revoked_access_without_repeating_preparation(
+    material, monkeypatch
+):
+    from deeptutor.capabilities.mastery.pipeline import MasteryLoopPipeline
+    from deeptutor.core.context import UnifiedContext
+    from deeptutor.runtime.stream_bus import StreamBus
+
+    calls = _install_preparation(material, monkeypatch)
+    await lessons.prepare_lesson(material.store, "path", "kp", material.config)
+    monkeypatch.setattr("deeptutor.learning.storage.LearningStore", lambda: material.store)
+    monkeypatch.setattr(
+        "deeptutor.multi_user.knowledge_access.resolve_kb_document_path", lambda *_args: None
+    )
+    pipeline = MasteryLoopPipeline(language="en")
+    pipeline.llm_config = material.config
+    context = UnifiedContext(user_message="Continue", metadata={"mastery_path_id": "path"})
+    messages = [{"role": "user", "content": context.user_message}]
+    for _ in range(2):
+        assert await pipeline.prepare_model_request(context, StreamBus(), messages) == []
+    assert "access was revoked" in messages[-1]["content"]
+    assert "not prepared for this request" not in messages[-1]["content"]
+    assert pipeline._lesson_pixels is None and len(calls) == 3
 
 
 @pytest.mark.parametrize("count", [4, 7])

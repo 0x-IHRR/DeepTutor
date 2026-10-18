@@ -175,12 +175,14 @@ def cached_lesson(
     )
     if cached.get("model_fingerprint") != model_key:
         return None
+    topic = store.get_topic(progress.book_id, progress=progress)
+    if cached.get("course_intent_fingerprint") != _fingerprint(_course_intent(topic, progress)):
+        return None
     if focus is not None and cached.get("coverage", {}).get("focus", "") != focus:
         return None
-    try:
-        validate_evidence(store, progress, kp_id, cached, allow_partial=True)
-    except LessonUnavailable:
-        return None
+    # Keep concrete access/source failures visible to the automatic delivery
+    # hook; unavailable evidence is not an unprepared objective (#1902).
+    validate_evidence(store, progress, kp_id, cached, allow_partial=True)
     return cached
 
 
@@ -188,6 +190,15 @@ def _fingerprint(value: Any) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()
+
+
+def _course_intent(topic: Any, progress: Any) -> dict[str, str]:
+    # These inputs steer selection (#1902), but do not invalidate the factual
+    # answer keys of already registered questions when teaching scope changes.
+    return {
+        "course_goal": str(getattr(getattr(topic, "metadata", None), "goal", ""))[:2000],
+        "target_level": str(getattr(progress.learner_profile, "target_level", ""))[:500],
+    }
 
 
 def objective_fingerprint(progress: Any, kp_id: str) -> str:
@@ -601,6 +612,8 @@ async def prepare_lesson(
             )
         return {}
     obj_key = objective_fingerprint(progress, kp_id)
+    course_intent = _course_intent(topic, progress)
+    intent_key = _fingerprint(course_intent)
     if stream is not None:
         await stream.progress(
             "A lecke forrásait és oldalhivatkozásait ellenőrzöm",
@@ -618,11 +631,16 @@ async def prepare_lesson(
             "preparation": PREPARATION_VERSION,
         }
     )
-    cached = (
-        None
-        if refresh
-        else await asyncio.to_thread(cached_lesson, store, progress, kp_id, config, focus=focus)
-    )
+    try:
+        cached = (
+            None
+            if refresh
+            else await asyncio.to_thread(cached_lesson, store, progress, kp_id, config, focus=focus)
+        )
+    except LessonUnavailable:
+        # An explicit preparation can replace stale evidence. The fresh scope
+        # above and all newly selected sources below still require authorization.
+        cached = None
     if cached is not None:
         return cached
     if not supports_vision(config.binding, config.model):
@@ -635,8 +653,7 @@ async def prepare_lesson(
         "objective": kp.name,
         "module": module.name,
         "purpose": module.objective,
-        "course_goal": str(topic.metadata.goal)[:2000],
-        "target_level": str(getattr(progress.learner_profile, "target_level", ""))[:500],
+        **course_intent,
         "focus": focus,
         "learner_request": learner_request,
     }
@@ -1018,12 +1035,15 @@ async def prepare_lesson(
             "covered": [entry["supports"] for entry in verified_sources],
         }
         evidence = {
-            "id": _fingerprint([obj_key, scope_key, model_key, verified_sources, coverage]),
+            "id": _fingerprint(
+                [obj_key, scope_key, model_key, intent_key, verified_sources, coverage]
+            ),
             "schema_version": SCHEMA,
             "knowledge_point_id": kp_id,
             "objective_fingerprint": obj_key,
             "scope_fingerprint": scope_key,
             "model_fingerprint": model_key,
+            "course_intent_fingerprint": intent_key,
             "status": "ready",
             "sources": verified_sources,
             "model_observations": verified_observations,
@@ -1036,9 +1056,13 @@ async def prepare_lesson(
         def commit(tx: Any) -> None:
             current_topic = store.get_topic(path_id, progress=tx.progress)
             current_scope, _ = scope_snapshot(current_topic, tx.progress, kp_id)
-            if objective_fingerprint(tx.progress, kp_id) != obj_key or current_scope != scope_key:
+            if (
+                objective_fingerprint(tx.progress, kp_id) != obj_key
+                or current_scope != scope_key
+                or _fingerprint(_course_intent(current_topic, tx.progress)) != intent_key
+            ):
                 raise LessonUnavailable(
-                    "The objective or sources changed while preparing the lesson. Retry."
+                    "The objective, course requirements or sources changed while preparing the lesson. Retry."
                 )
             tx.progress.lesson_evidence[kp_id] = evidence
             tx.progress.source_grounded = True
