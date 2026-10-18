@@ -129,10 +129,14 @@ def teaching_guidance(
         "teaching_focus": {
             "knowledge_point_id": knowledge_point_id,
             "observations": [
-                {"key": key, **item.model_dump(
-                    exclude={"session_id", "turn_id", "updated_at", "knowledge_point_id"}
-                )}
-                for key, item in observations if item.knowledge_point_id == knowledge_point_id
+                {
+                    "key": key,
+                    **item.model_dump(
+                        exclude={"session_id", "turn_id", "updated_at", "knowledge_point_id"}
+                    ),
+                }
+                for key, item in observations
+                if item.knowledge_point_id == knowledge_point_id
             ][:3],
             "instruction": (
                 "Use the current learner request and these objective-local notes to choose the next "

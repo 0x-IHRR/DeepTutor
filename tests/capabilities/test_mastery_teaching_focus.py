@@ -5,13 +5,24 @@ from deeptutor.learning.teaching import teaching_guidance
 
 
 def test_focus_uses_current_failed_strategy_without_mutating_profile():
-    profile = LearnerProfile(teaching_observations={
-        "current": TeachingObservation(knowledge_point_id="point", text="The relationship is unclear",
-            basis="learner_report", evidence="I still do not see the connection",
-            strategy="Names without an example", outcome="not_helped"),
-        "other": TeachingObservation(knowledge_point_id="other", text="Needs a diagram",
-            strategy="A diagram", outcome="helped"),
-    })
+    profile = LearnerProfile(
+        teaching_observations={
+            "current": TeachingObservation(
+                knowledge_point_id="point",
+                text="The relationship is unclear",
+                basis="learner_report",
+                evidence="I still do not see the connection",
+                strategy="Names without an example",
+                outcome="not_helped",
+            ),
+            "other": TeachingObservation(
+                knowledge_point_id="other",
+                text="Needs a diagram",
+                strategy="A diagram",
+                outcome="helped",
+            ),
+        }
+    )
     before = profile.model_dump()
     focus = teaching_guidance(profile, "point", include_history=True)["teaching_focus"]
     assert focus["knowledge_point_id"] == "point"
@@ -32,4 +43,6 @@ def test_preferences_remain_advisory_and_have_clear_boundaries():
     assert "current explicit request over older preferences" in guidance
     assert "pacing as a preference, not a rigid chunk counter" in guidance
     assert "requested display format" in guidance
-    assert "mode authorization, source trust, pending-question identity or mastery credit" in guidance
+    assert (
+        "mode authorization, source trust, pending-question identity or mastery credit" in guidance
+    )

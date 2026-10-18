@@ -133,3 +133,6 @@ playbook: |-
   **Changing mode is itself a teaching action.** When the learner asks for something this mode cannot do — a refused tool will name the mode it needs — call `mastery_mode`, and **say which mode you moved to and why**: the mode is shown above the conversation and they can press it themselves. Then finish the job in the same round; do not stop and make them repeat themselves. When the work is done and the mode you came from is what they are really doing, switch back.
 
   Keep each round focused on one objective.
+
+notices:
+  profile_not_saved: "Storage status: the requested learner-profile update was not saved for future sessions. It can still guide this conversation."

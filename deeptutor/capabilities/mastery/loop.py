@@ -284,8 +284,10 @@ class MasteryLoopCapability:
                 state["profile_write_pending"] = True
 
                 def profile_recorded(receipt):
-                    if (state.get("profile_selection") == selection
-                            and context.metadata.get("mastery_path_id") == path_id):
+                    if (
+                        state.get("profile_selection") == selection
+                        and context.metadata.get("mastery_path_id") == path_id
+                    ):
                         state["profile_write_pending"] = False
                         state["profile_receipt"] = receipt
 
@@ -437,10 +439,11 @@ class MasteryLoopCapability:
             # it does not classify or discard the learner-facing explanation.
             state["profile_write_pending"] = False
             state["profile_receipt"] = {"status": "not_saved"}
-            notice = (
-                "Storage status: the requested learner-profile update was not saved for "
-                "future sessions. It can still guide this conversation."
-            )
+            from deeptutor.services.prompt import get_prompt_manager
+            from deeptutor.services.prompt.lookup import prompt_text
+
+            pack = get_prompt_manager().load_prompts("mastery", "mastery_loop", context.language)
+            notice = prompt_text(pack, ("notices", "profile_not_saved"))
 
         def with_notice(override):
             if not notice:

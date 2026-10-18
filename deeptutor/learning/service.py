@@ -1309,13 +1309,23 @@ class LearningService:
         # Deletion has its own explicit, quoted, revision-fenced operation.
         if clear_fields is not None and (
             not isinstance(clear_fields, list)
-            or any(not isinstance(key, str) or key not in _LEARNER_PROFILE_FIELDS
-                   or key == "teaching_strategy" for key in clear_fields)
+            or any(
+                not isinstance(key, str)
+                or key not in _LEARNER_PROFILE_FIELDS
+                or key == "teaching_strategy"
+                for key in clear_fields
+            )
         ):
             raise ValueError("clear_fields must name intake text fields")
         if clear_fields:
-            if not isinstance(clear_request, str) or not clear_request.strip() or clear_request not in learner_message:
-                raise ValueError("clear_request must be a literal quote from the current learner message")
+            if (
+                not isinstance(clear_request, str)
+                or not clear_request.strip()
+                or clear_request not in learner_message
+            ):
+                raise ValueError(
+                    "clear_request must be a literal quote from the current learner message"
+                )
             if any(key in cleaned for key in clear_fields):
                 raise ValueError("Cannot update and clear the same profile field")
             if type(expected_revision) is not int or expected_revision < 0:
