@@ -200,6 +200,33 @@ def test_loader_skips_document_when_active_engine_cannot_parse(
     assert "Settings" in caplog.text
 
 
+def test_loader_continues_after_mineru_task_failure(tmp_path, monkeypatch):
+    """#1982: a failed CLI document cannot prevent later documents from loading."""
+    pytest.importorskip("llama_index.core")
+    from deeptutor.knowledge.indexing_run import IndexingRun
+    from deeptutor.services.parsing.types import ParsedDocument, ParserError
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import LlamaIndexDocumentLoader
+
+    failed = tmp_path / "failed.pdf"
+    good = tmp_path / "next.docx"
+    failed.write_bytes(b"fixture")
+    good.write_bytes(b"fixture")
+    _install_stub_parse_service(
+        monkeypatch,
+        {
+            failed.name: ParserError(
+                "1 task(s) failed while processing documents: Timed out waiting for result"
+            ),
+            good.name: ParsedDocument(markdown="The next document is still usable."),
+        },
+    )
+    with IndexingRun(tmp_path, [str(failed), str(good)]) as run:
+        documents = asyncio.run(LlamaIndexDocumentLoader().load([str(failed), str(good)]))
+        assert [doc.metadata["file_name"] for doc in documents] == [good.name]
+        assert run.data["documents"][run.source_key(failed)]["status"] == "failed"
+        assert run.data["documents"][run.source_key(good)]["status"] == "embedding"
+
+
 def test_loader_explains_scanned_pdf_when_parser_yields_images_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

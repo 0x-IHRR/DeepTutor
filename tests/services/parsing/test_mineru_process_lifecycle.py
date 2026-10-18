@@ -13,7 +13,7 @@ from deeptutor.knowledge import indexing_run
 from deeptutor.services.parsing.engines.mineru import local
 
 
-def run_fixture(tmp_path, monkeypatch, code, run=None, idle=0.05, timeout=30):
+def run_fixture(tmp_path, monkeypatch, code, run=None, idle=0.05, timeout=30, extra_env=None):
     source = tmp_path / "lesson.pdf"
     source.write_bytes(b"controlled fixture")
     popen = subprocess.Popen
@@ -34,6 +34,7 @@ def run_fixture(tmp_path, monkeypatch, code, run=None, idle=0.05, timeout=30):
         source,
         tmp_path / "out",
         cli_command=sys.executable,
+        extra_env=extra_env,
     )
     return result, time.monotonic() - started
 
@@ -46,6 +47,25 @@ def test_quiet_inference_is_not_killed_for_log_silence(tmp_path, monkeypatch):
     result, elapsed = run_fixture(tmp_path, monkeypatch, code)
     assert result.ok, result
     assert elapsed < 2
+
+
+def test_explicit_client_timeout_also_bounds_parent_runtime(tmp_path, monkeypatch):
+    code = (
+        "import os,sys,time,pathlib; p=pathlib.Path(sys.argv[1]); "
+        "(p/'deadline.txt').write_text(os.environ['MINERU_TASK_RESULT_TIMEOUT_SECONDS']); "
+        "time.sleep(10)"
+    )
+    result, elapsed = run_fixture(
+        tmp_path,
+        monkeypatch,
+        code,
+        extra_env={"MINERU_TASK_RESULT_TIMEOUT_SECONDS": "1.2"},
+    )
+    assert result.reason is local.LocalParseReason.TIMEOUT
+    assert "1.2 seconds" in result.detail
+    assert elapsed < 2.5
+    (deadline,) = (tmp_path / "out").glob(".mineru-attempt-*/output/deadline.txt")
+    assert deadline.read_text() == "1.2"
 
 
 def test_parent_exit_does_not_wait_for_descendant_stdout(tmp_path, monkeypatch):

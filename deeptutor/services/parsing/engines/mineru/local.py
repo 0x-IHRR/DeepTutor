@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 import logging
+import math
 import os
 from pathlib import Path
 import shutil
@@ -39,7 +40,11 @@ def _bounded_detail(text: str) -> str:
     clean = str(text or "").strip()
     if len(clean) <= _FAILURE_DETAIL_MAX_CHARS:
         return clean
-    return clean[:_FAILURE_DETAIL_MAX_CHARS].rstrip() + "…"
+    # Keep the exception/exit-code prefix and the terminal cause. Progress
+    # bars can otherwise consume the whole excerpt before the real error (#1982).
+    head = clean[:80].rstrip()
+    tail_size = _FAILURE_DETAIL_MAX_CHARS - len(head) - 3
+    return head + "\n…\n" + clean[-tail_size:].lstrip()
 
 
 class LocalParseReason(StrEnum):
@@ -225,17 +230,24 @@ def parse_document_with_mineru_result(
         quiet_reported = False
         total_timeout = _LOCAL_PARSE_TIMEOUT_SECONDS
         try:
-            configured_timeout = int(
+            configured_timeout = float(
                 (extra_env or {}).get(
                     "MINERU_TASK_RESULT_TIMEOUT_SECONDS",
                     os.environ.get("MINERU_TASK_RESULT_TIMEOUT_SECONDS", str(total_timeout)),
                 )
             )
-            if configured_timeout > 0:
+            if math.isfinite(configured_timeout) and configured_timeout >= 1:
                 total_timeout = configured_timeout
         except (TypeError, ValueError):
             pass
-        env = {**os.environ, **(extra_env or {}), "PYTHONUTF8": "1"}
+        env = {
+            **os.environ,
+            **(extra_env or {}),
+            "PYTHONUTF8": "1",
+            # MinerU's nested API client otherwise times out at 3600 seconds,
+            # before our default deadline. Both owners use the resolved value.
+            "MINERU_TASK_RESULT_TIMEOUT_SECONDS": f"{total_timeout:g}",
+        }
         log_path = attempt / "cli.log"
         # File reads do not block on a pipe inherited by a surviving worker.
         # Settle the owned process tree before validating/publishing artifacts.

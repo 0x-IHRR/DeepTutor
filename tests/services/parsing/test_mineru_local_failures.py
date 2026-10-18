@@ -11,6 +11,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from pathlib import Path
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -129,6 +130,58 @@ def test_nonzero_exit_keeps_bounded_stderr_tail(
     assert "exit code 7" in result.detail
     assert "first problem" in result.detail
     assert "second problem" in result.detail
+
+
+def test_long_progress_log_preserves_terminal_timeout_and_full_log(
+    pdf: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1982: tqdm output must not push the actionable final error out of the summary."""
+    terminal = "Timed out waiting for result of task textbook after 3600 seconds"
+    lines = tuple(f"Predict {index}/89 " + "." * 80 for index in range(40)) + (terminal,)
+    _install_fake_popen(monkeypatch, returncode=1, lines=lines)
+
+    result = parse_document_with_mineru_result(pdf, tmp_path / "out", cli_command="mineru")
+
+    assert result.reason is LocalParseReason.NONZERO_EXIT
+    assert "exit code 1" in result.detail
+    assert terminal in result.detail
+    assert len(result.detail) <= mineru_local._FAILURE_DETAIL_MAX_CHARS
+    (attempt,) = (tmp_path / "out").glob(".mineru-attempt-*")
+    assert (attempt / "cli.log").read_text() == "\n".join(lines)
+
+
+@pytest.mark.parametrize(
+    "inherited,extra,expected",
+    [
+        (None, {}, "7200"),
+        ("10800", {}, "10800"),
+        ("10800", {"MINERU_TASK_RESULT_TIMEOUT_SECONDS": "14400"}, "14400"),
+        (None, {"MINERU_TASK_RESULT_TIMEOUT_SECONDS": "1.5"}, "1.5"),
+        (None, {"MINERU_TASK_RESULT_TIMEOUT_SECONDS": "invalid"}, "7200"),
+    ],
+)
+def test_cli_receives_the_effective_parent_deadline(
+    pdf, tmp_path, monkeypatch, inherited, extra, expected
+) -> None:
+    """The nested API client must not silently retain its shorter one-hour default."""
+    if inherited is None:
+        monkeypatch.delenv("MINERU_TASK_RESULT_TIMEOUT_SECONDS", raising=False)
+    else:
+        monkeypatch.setenv("MINERU_TASK_RESULT_TIMEOUT_SECONDS", inherited)
+    seen = []
+
+    @contextmanager
+    def cli(cmd, log_path, env):
+        seen.append(env["MINERU_TASK_RESULT_TIMEOUT_SECONDS"])
+        log_path.write_text("controlled failure")
+        yield SimpleNamespace(poll=lambda: 1)
+
+    monkeypatch.setattr(mineru_local, "cli_process", cli)
+    result = parse_document_with_mineru_result(
+        pdf, tmp_path / "out", cli_command="mineru", extra_env=extra
+    )
+    assert result.reason is LocalParseReason.NONZERO_EXIT
+    assert seen == [expected]
 
 
 def test_no_artifacts_reports_reason(
