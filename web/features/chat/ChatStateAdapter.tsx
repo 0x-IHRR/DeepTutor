@@ -3658,7 +3658,10 @@ export function ChatStateAdapterProvider({
     if (!session || session.isStreaming || message?.role !== "user" ||
         !message.failedSubmission || messageId >= 0) return;
     if (message.failedSubmissionId) {
-      clearFailedSubmission(session.sessionId ?? draftFailedSubmissionKey(), message.failedSubmissionId);
+      const cleared = clearFailedSubmission(
+        session.sessionId ?? draftFailedSubmissionKey(), message.failedSubmissionId,
+      );
+      if (!cleared && !message.failedSubmissionNotSaved) return;
     }
     dispatch({ type: "DISCARD_FAILED_SUBMISSION", key, messageId });
   }, []);

@@ -1343,3 +1343,21 @@ it("retains a genuine server turn failure after the last local pending record is
   expect(screen.getByTestId("submissionFailed")).toHaveTextContent("false");
   expect(screen.getByTestId("lastTurnFailed")).toHaveTextContent("true");
 });
+
+
+it("keeps the recovery row visible when browser storage cannot record its dismissal", async () => {
+  seedUnsentSubmission();
+  fixture.session = completedServerSession();
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => { fireEvent.click(screen.getByText("Load")); });
+  for (const storage of [localStorage, sessionStorage]) {
+    for (const method of ["setItem", "removeItem"] as const) {
+      vi.spyOn(storage, method).mockImplementation(() => {
+        throw new DOMException("Unavailable", "SecurityError");
+      });
+    }
+  }
+  await act(async () => { fireEvent.click(screen.getByText("Discard first")); });
+  expect(readFailedSubmissions("s1")).toHaveLength(1);
+  expect(readMessages().some(message => message.failed)).toBe(true);
+});
