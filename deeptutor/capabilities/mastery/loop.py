@@ -398,6 +398,7 @@ class MasteryLoopCapability:
                 # request, not a model-supplied claim about their intention.
                 updated["_learner_message"] = context.user_message or ""
             if tool_name == "mastery_prepare_lesson":
+                updated["_language"] = context.language
                 from deeptutor.learning.policy import next_objective
                 from deeptutor.learning.storage import LearningStore
 

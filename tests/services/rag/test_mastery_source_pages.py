@@ -87,6 +87,37 @@ async def test_successful_explicit_preparation_supersedes_same_turn_failure(mate
     assert not material.store.load("path").mastery_levels
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("language, expected", [("en", "Finding sources"), ("zh", "查找资料")])
+async def test_explicit_preparation_reports_localized_stages_on_the_owned_stream(
+    material, monkeypatch, language, expected
+):
+    from deeptutor.capabilities.mastery.tools import MasteryPrepareLessonTool
+    from deeptutor.runtime.stream_bus import StreamBus, register_bus, unregister_bus
+
+    _install_preparation(material, monkeypatch)
+    monkeypatch.setattr(
+        "deeptutor.capabilities.mastery.tools._new_service", lambda: LearningService(material.store)
+    )
+    monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: material.config)
+    stream = StreamBus()
+    register_bus("preparing", stream)
+    try:
+        result = await MasteryPrepareLessonTool().execute(
+            _mastery_path_id="path",
+            knowledge_point_id="kp",
+            _turn_id="preparing",
+            _language=language,
+        )
+        await stream.close()
+        events = [event async for event in stream.subscribe()]
+        assert result.success, result.content
+        assert any(expected in event.content for event in events)
+        assert not any(event.type.value == "content" for event in events)
+    finally:
+        unregister_bus("preparing")
+
+
 @pytest.fixture
 def material(tmp_path, monkeypatch):
     raw = tmp_path / "kb" / "raw"

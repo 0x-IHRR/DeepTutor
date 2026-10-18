@@ -579,14 +579,27 @@ async def prepare_lesson(
     config: Any,
     stream: Any = None,
     *,
+    language: str = "en",
     focus: str = "",
     learner_request: str = "",
     refresh: bool = False,
 ) -> dict[str, Any]:
     """No write transaction is held across retrieval or model calls."""
     from deeptutor.services.llm.capabilities import supports_vision
+    from deeptutor.services.prompt import get_prompt_manager
+    from deeptutor.services.prompt.lookup import prompt_text
     from deeptutor.services.rag.pipelines.llamaindex.pipeline import LlamaIndexPipeline
     from deeptutor.services.workspace.knowledge import learning_source_access
+
+    prompts = get_prompt_manager().load_prompts("mastery", "mastery_loop", language)
+
+    async def status(key: str) -> None:
+        if stream is not None:
+            await stream.progress(
+                prompt_text(prompts, ("preparation", key)),
+                source="mastery_path",
+                stage="responding",
+            )
 
     if (
         not isinstance(focus, str)
@@ -614,12 +627,7 @@ async def prepare_lesson(
     obj_key = objective_fingerprint(progress, kp_id)
     course_intent = _course_intent(topic, progress)
     intent_key = _fingerprint(course_intent)
-    if stream is not None:
-        await stream.progress(
-            "A lecke forrásait és oldalhivatkozásait ellenőrzöm",
-            source="mastery_path",
-            stage="responding",
-        )
+    await status("checking_sources")
     scope_key, indices = await asyncio.to_thread(
         scope_snapshot, topic, progress, kp_id, prepare_legacy=True
     )
@@ -658,11 +666,7 @@ async def prepare_lesson(
         "learner_request": learner_request,
     }
 
-    async def status(text: str) -> None:
-        if stream is not None:
-            await stream.progress(text, source="mastery_path", stage="responding")
-
-    await status("Forrásokat keresek ehhez a témához")
+    await status("finding_sources")
     query_result = await _ask(
         config,
         'Return JSON {"queries":[...]} with up to 3 concise retrieval queries for this learning objective. '
@@ -950,7 +954,7 @@ async def prepare_lesson(
             feedback = None
             start = 0
             if sources:
-                await status("Az eredeti oldalakat és ábrákat ellenőrzöm")
+                await status("checking_pages")
                 observations, feedback, start = await inspect(sources)
                 retain_inspected(sources, observations)
                 if feedback is None and ranking.get("sufficient") is True:
@@ -982,9 +986,7 @@ async def prepare_lesson(
                 "reason": repair["reason"],
                 "status": "not_applied",
             }
-            await status(
-                "Hiányzó vagy nehezen olvasható részletet pótolok (egyszeri célzott javítás)"
-            )
+            await status("repairing")
             if repair["action"] == "search":
                 repair_queries = repair.get("queries", [repair.get("query")])
                 if (

@@ -3790,11 +3790,15 @@ class MasteryPrepareLessonTool(BaseTool):
         if not path_id:
             return _no_path_result()
         try:
+            from deeptutor.runtime.stream_bus import get_bus
+
             evidence = await prepare_lesson(
                 service.store,
                 path_id,
                 str(kwargs.get("knowledge_point_id") or ""),
                 get_llm_config(),
+                stream=get_bus(_resolve_turn_id(kwargs)),
+                language=kwargs.get("_language") or "en",
                 focus=kwargs.get("focus") or "",
                 learner_request=str(kwargs.get("_learner_message") or "")[:1500],
                 refresh=kwargs.get("refresh", False),

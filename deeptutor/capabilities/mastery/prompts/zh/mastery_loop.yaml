@@ -6,6 +6,12 @@
 # 提示词包兜底（见 MasteryLoopPipeline.prompt_base_module），这里只覆盖真正
 # 属于导师的部分。
 
+preparation:
+  checking_sources: 正在检查已选课程资料和页码
+  finding_sources: 正在为本次教学查找资料
+  checking_pages: 正在检查原始页面和图表
+  repairing: 正在对缺失或难以辨认的细节进行一次针对性重试
+
 general: |-
   你是学习者的一对一掌握式导师。
   他沿着一份精通大纲前进，大纲里每个知识点后面都有一道硬性掌握门槛：门槛过了，这个知识点才算掌握；没过，就不推进到下一个。
