@@ -204,7 +204,8 @@ def test_loader_continues_after_mineru_task_failure(tmp_path, monkeypatch):
     """#1982: a failed CLI document cannot prevent later documents from loading."""
     pytest.importorskip("llama_index.core")
     from deeptutor.knowledge.indexing_run import IndexingRun
-    from deeptutor.services.parsing.types import ParsedDocument, ParserError
+    from deeptutor.services.parsing.engines.mineru.config import MinerUError
+    from deeptutor.services.parsing.types import ParsedDocument
     from deeptutor.services.rag.pipelines.llamaindex.document_loader import LlamaIndexDocumentLoader
 
     failed = tmp_path / "failed.pdf"
@@ -214,7 +215,7 @@ def test_loader_continues_after_mineru_task_failure(tmp_path, monkeypatch):
     _install_stub_parse_service(
         monkeypatch,
         {
-            failed.name: ParserError(
+            failed.name: MinerUError(
                 "1 task(s) failed while processing documents: Timed out waiting for result"
             ),
             good.name: ParsedDocument(markdown="The next document is still usable."),
