@@ -601,3 +601,44 @@ async def test_reviewed_tool_scope_and_commit_cannot_replace_reviewed_payload(sy
         action="commit", preview_id=preview_id, modules=revisions(), **bound
     )
     assert not result.success and "only preview_id" in result.content
+
+
+def test_group_child_revision_is_previewed_without_retiring_live_questions(system):
+    store, service = system
+
+    def group_questions(tx):
+        first = tx.progress.pending_question.model_copy(deep=True)
+        first.question_id = "child-0"
+        second = first.model_copy(
+            update={"question_id": "child-1", "knowledge_point_id": "p1", "module_id": "m1"}
+        )
+        group = first.model_copy(
+            update={
+                "question_id": "question",
+                "question_type": "group",
+                "expected_answer": "",
+                "questions": [first, second],
+            }
+        )
+        tx.progress.pending_question = group
+        active = tx.active_interaction()
+        active.question = group
+        tx.put_interaction(active)
+
+    store.mutate("path", group_questions)
+    before = store.get_active_interaction("path").model_dump()
+    result, proposed = preview(
+        system,
+        [
+            {
+                "module_id": "m1",
+                "rewrite": [{"knowledge_point_id": "p1", "name": "Changed child objective"}],
+            }
+        ],
+    )
+    assert proposed.pending_question is None
+    assert result["effects"]["active_interaction_removed"] is True
+    assert store.get_active_interaction("path").model_dump() == before
+    service.commit_module_revision("path", result["preview_id"], session_id="session")
+    assert store.get_active_interaction("path") is None
+    assert store.load("path").pending_question is None
