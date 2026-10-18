@@ -54,7 +54,7 @@ describe("grouped mastery assessment", () => {
       isStreaming={false} onCopyAssistantMessage={async () => undefined}
       onRegenerateMessage={() => undefined} onAnswerMasteryQuestion={() => true} />;
     const { rerender } = render(conversation(false));
-    await user.clear(screen.getByRole("textbox"));
+    await user.clear(await screen.findByRole("textbox"));
     await user.type(screen.getByRole("textbox"), "Explicit revised explanation");
     await user.click(screen.getByRole("button", { name: "Submit" }));
     expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();

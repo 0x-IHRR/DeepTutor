@@ -81,8 +81,6 @@ import {
   leadingTraceEvents,
   type MessageSegment,
 } from "@/components/chat/home/AskUserOptions";
-import { MasteryQuestionCard } from "@/components/chat/home/MasteryQuestionCard";
-import { MasterySourcePresentation } from "@/components/chat/home/MasterySourcePresentation";
 import {
   collectMasteryAnswerRejections,
   collectMasteryGrades,
@@ -96,8 +94,6 @@ import { SetupCredentialCard } from "@/components/chat/home/SetupCredentialCard"
 import { extractSetupCredential } from "@/lib/setup-signals";
 import { PartnerDraftCard } from "@/components/chat/home/PartnerDraftCard";
 import { extractPartnerDraft } from "@/lib/partner-draft";
-import { CourseHandoffCards } from "@/components/chat/home/CourseHandoffCard";
-import { MasteryHandoffCards } from "@/components/chat/home/MasteryHandoffCard";
 import {
   extractCourseHandoffs,
   stripLeakedHandoffJson,
@@ -125,6 +121,21 @@ import {
 
 const MathAnimatorViewer = dynamic(
   () => import("@/components/math-animator/MathAnimatorViewer"),
+  { ssr: false },
+);
+const MasteryQuestionCard = dynamic(
+  () => import("@/components/chat/home/MasteryQuestionCard"), { ssr: false },
+);
+const MasterySourcePresentation = dynamic(
+  () => import("@/components/chat/home/MasterySourcePresentation").then(module => module.MasterySourcePresentation),
+  { ssr: false },
+);
+const CourseHandoffCards = dynamic(
+  () => import("@/components/chat/home/CourseHandoffCard").then(module => module.CourseHandoffCards),
+  { ssr: false },
+);
+const MasteryHandoffCards = dynamic(
+  () => import("@/components/chat/home/MasteryHandoffCard").then(module => module.MasteryHandoffCards),
   { ssr: false },
 );
 const QuizViewer = dynamic(() => import("@/components/quiz/QuizViewer"), {
@@ -1188,7 +1199,11 @@ export const AssistantMessage = memo(function AssistantMessage({
           events={events}
         />
       )}
-      <MasterySourcePresentation events={events} />
+      {events.some(event => event.type === "sources" &&
+        Array.isArray(event.metadata.sources) && event.metadata.sources.some(source =>
+          source && typeof source === "object" &&
+          (source.presentation === "teaching" || source.presentation === "reveal"))) &&
+        <MasterySourcePresentation events={events} />}
       {/* Non-default branches (quiz, math animator, visualize) keep the
           card below the body. The default branch inlines it via
           ``messageSegments``; the research branch renders its own card
@@ -1209,8 +1224,8 @@ export const AssistantMessage = memo(function AssistantMessage({
       {partnerDraft ? <PartnerDraftCard data={partnerDraft} /> : null}
       {/* Course Study's hand-offs sit last: they are what to do *after* reading
           the answer, so they belong below it rather than competing with it. */}
-      <CourseHandoffCards handoffs={courseHandoffs} />
-      <MasteryHandoffCards handoffs={masteryHandoffs} />
+      {courseHandoffs.length > 0 && <CourseHandoffCards handoffs={courseHandoffs} />}
+      {masteryHandoffs.length > 0 && <MasteryHandoffCards handoffs={masteryHandoffs} />}
     </>
   );
 });
