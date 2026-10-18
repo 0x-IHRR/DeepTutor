@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import logging
 from typing import Any, Awaitable, Callable
@@ -16,6 +16,7 @@ from deeptutor.services.llm.context_window import (
     resolve_effective_context_window,
 )
 from deeptutor.services.llm.image_replay import deduplicate_user_images
+from deeptutor.services.llm.types import StreamOutcome
 from deeptutor.services.prompt.language import language_label
 
 from .ask_user_trace import (
@@ -41,6 +42,8 @@ TRUNCATION_GUARD_RATIO = 0.95
 MAX_HISTORY_PLAN_TOKENS = 131_072
 MAX_SUMMARY_OUTPUT_TOKENS = 16_384
 MAX_RAW_REBUILD_TOKENS = 131_072
+
+logger = logging.getLogger(__name__)
 
 
 # Planning allowance per image, not provider-reported usage. Counting encoded
@@ -196,6 +199,7 @@ class ContextBuildResult:
     budget: int
     model_history: list[dict[str, Any]] | None = None
     previous_model_turn: dict[str, Any] | None = None
+    history_sources: dict[str, str] = field(default_factory=dict)
 
 
 class _ContextSummaryAgent(BaseAgent):
@@ -458,6 +462,67 @@ class ContextBuilder:
         # turns it condensed have scrolled out. Unstated, a summary of a
         # foreign-language session comes back in the default language and the
         # reply follows it — #1511's drift "after a few rounds".
+        system_prompt = self._summary_instruction(language)
+        user_prompt = (
+            f"Update the summary using the material below. "
+            f"Keep the total under {target_tokens} tokens.\n\n{source_text}"
+        )
+        if language.startswith("zh"):
+            user_prompt = (
+                f"请基于下面的材料更新摘要，总长度不超过 {target_tokens} tokens。\n\n{source_text}"
+            )
+        try:
+            _chunks: list[str] = []
+            outcome = StreamOutcome()
+            replay_kwargs: dict[str, Any] = {}
+            if replay_request is not None:
+                # Reuse the conversation's warm prefix; only the instruction
+                # is new. Tools are present for cache identity, never executed.
+                instruction = (
+                    f"{system_prompt}\n\nSummarize the conversation above in at most "
+                    f"{target_tokens} tokens. Output only the summary; do not call tools."
+                )
+                replay_kwargs = {
+                    "messages": deduplicate_user_images(
+                        [
+                            *replay_request["messages"],
+                            {"role": "user", "content": instruction},
+                        ]
+                    ),
+                    "tools": replay_request.get("tools"),
+                }
+            async for _c in agent.stream_llm(
+                user_prompt=user_prompt,
+                system_prompt=system_prompt,
+                max_tokens=summary_budget,
+                stage="summarize_context",
+                trace_meta=trace_meta,
+                outcome=outcome,
+                **replay_kwargs,
+            ):
+                _chunks.append(_c)
+            summary = "".join(_chunks).strip()
+            return self._finalize_summary(summary, summary_budget, outcome), events
+        finally:
+            await self._append_event(
+                events,
+                StreamEvent(
+                    type=StreamEventType.STAGE_END,
+                    source="context_builder",
+                    stage="summarize_context",
+                    metadata=trace_meta,
+                ),
+                on_event,
+            )
+
+    def _finalize_summary(self, summary: str, summary_budget: int, outcome: StreamOutcome) -> str:
+        """Legacy prose summaries can trim a partial final sentence."""
+        if count_tokens(summary) >= int(summary_budget * TRUNCATION_GUARD_RATIO):
+            return trim_incomplete_tail(summary)
+        return summary
+
+    def _summary_instruction(self, language: str) -> str:
+        """The summary task's policy, independently of a tutor's large prompt."""
         summary_language = language_label(language)
         system_prompt = (
             "You maintain a running summary of a conversation so future turns can "
@@ -489,57 +554,7 @@ class ContextBuilder:
                 "的内容。优先保留具体细节（数字、标识符、确切措辞），不要抽象转述，绝不虚构。"
                 f"摘要正文本身请使用{summary_language}撰写。"
             )
-        user_prompt = (
-            f"Update the summary using the material below. "
-            f"Keep the total under {target_tokens} tokens.\n\n{source_text}"
-        )
-        if language.startswith("zh"):
-            user_prompt = (
-                f"请基于下面的材料更新摘要，总长度不超过 {target_tokens} tokens。\n\n{source_text}"
-            )
-        try:
-            _chunks: list[str] = []
-            replay_kwargs: dict[str, Any] = {}
-            if replay_request is not None:
-                # Reuse the conversation's warm prefix; only the instruction
-                # is new. Tools are present for cache identity, never executed.
-                instruction = (
-                    f"{system_prompt}\n\nSummarize the conversation above in at most "
-                    f"{target_tokens} tokens. Output only the summary; do not call tools."
-                )
-                replay_kwargs = {
-                    "messages": deduplicate_user_images(
-                        [
-                            *replay_request["messages"],
-                            {"role": "user", "content": instruction},
-                        ]
-                    ),
-                    "tools": replay_request.get("tools"),
-                }
-            async for _c in agent.stream_llm(
-                user_prompt=user_prompt,
-                system_prompt=system_prompt,
-                max_tokens=summary_budget,
-                stage="summarize_context",
-                trace_meta=trace_meta,
-                **replay_kwargs,
-            ):
-                _chunks.append(_c)
-            summary = "".join(_chunks).strip()
-            if count_tokens(summary) >= int(summary_budget * TRUNCATION_GUARD_RATIO):
-                summary = trim_incomplete_tail(summary)
-            return summary, events
-        finally:
-            await self._append_event(
-                events,
-                StreamEvent(
-                    type=StreamEventType.STAGE_END,
-                    source="context_builder",
-                    stage="summarize_context",
-                    metadata=trace_meta,
-                ),
-                on_event,
-            )
+        return system_prompt
 
     async def build(
         self,
@@ -652,8 +667,11 @@ class ContextBuilder:
                     ],
                 ],
                 "tools": previous_model_turn.get("tools"),
+                "rows": older_unsummarized,
             }
         try:
+            self._summary_rows = older_unsummarized
+            self._summary_prior = stored_summary
             new_summary, events = await self._summarize(
                 session_id=session_id,
                 language=language,
@@ -662,10 +680,15 @@ class ContextBuilder:
                 on_event=on_event,
                 **({"replay_request": replay_request} if replay_request else {}),
             )
-        except Exception:
+        except Exception as exc:
             summarize_ok = False
             new_summary = ""
             events = []
+            # Keep private transcript/provider details out of diagnostics.
+            logger.warning(
+                "Context condensation failed (%s); bounding recent history without advancing its watermark",
+                type(exc).__name__,
+            )
 
         if summarize_ok and new_summary:
             # Advance the watermark only on a successful summarize — never

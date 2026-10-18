@@ -1124,6 +1124,9 @@ class AgentLoop:
         # belongs in the durable dialogue; the hook runs again on forced finish.
         if lesson_messages and not has_image_parts(self._transient_model_messages):
             request_messages = [*request_messages, *lesson_messages]
+        project = getattr(self.pipeline, "project_model_request", None)
+        if project is not None:
+            request_messages = project(request_messages)
         projected_messages = deduplicate_user_images(
             [
                 {
