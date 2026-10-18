@@ -52,6 +52,7 @@ dependencies = [
     "llama-index>=0.14.12",
     # PyStemmer 2.x has no Python 3.14 wheel; the runtime falls back to vector
     # retrieval when this optional BM25 integration is absent.
+    "bm25s>=0.3.14,<0.4.0",  # Legacy page lookup without optional PyStemmer
     "llama-index-retrievers-bm25>=0.7.1,<0.8.0; python_version < '3.14'",
     # FAISS vector store: ANN retrieval replacing SimpleVectorStore brute force for
     # large KBs (issue #552); imported lazily with SimpleVectorStore fallback.

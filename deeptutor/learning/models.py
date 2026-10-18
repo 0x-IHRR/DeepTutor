@@ -126,6 +126,7 @@ class QuizAttempt(BaseModel):
     knowledge_point_id: str
     module_id: str = ""
     is_correct: bool
+    result: Literal["correct", "partial", "incorrect"] | None = None
     user_answer: Any = None
     error_type: ErrorType | None = None
     self_attribution: str = ""
@@ -137,6 +138,12 @@ class QuizAttempt(BaseModel):
     void_reason: str = ""
     independent: bool = True
     visual_context: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _legacy_result(self):
+        if self.result is None:
+            self.result = "correct" if self.is_correct else "incorrect"
+        return self
 
 
 class RetryAttempt(BaseModel):
@@ -183,6 +190,8 @@ class LearningEvidence(BaseModel):
     hints_used: int = 0
     attempt_count: int = 1
     confidence: float | None = None
+    learner_answer: str = ""
+    feedback: str = ""
     response_time: float | None = None
     session_id: str = ""
     turn_id: str = ""
@@ -272,6 +281,8 @@ class PendingQuestion(BaseModel):
     # later instead of a bare right/wrong.
     explanation: str = ""
     difficulty: str = ""
+    # Server-side provenance snapshot; never projected onto an answer card.
+    source_evidence: dict[str, Any] = Field(default_factory=dict)
     created_at: float = Field(default_factory=time.time)
     visual_context: dict[str, Any] = Field(default_factory=dict)
     accepted_answers: list[str] = Field(default_factory=list)
@@ -623,6 +634,8 @@ class LearningProgress(BaseModel):
     # The quantitative ``mastery_levels`` gate covers MEMORY / PROCEDURE.
     qualitative_mastery: dict[str, bool] = Field(default_factory=dict)
     knowledge_types: dict[str, KnowledgeType] = Field(default_factory=dict)
+    lesson_evidence: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    source_grounded: bool = False
     quiz_attempts: list[QuizAttempt] = Field(default_factory=list)
     error_records: list[ErrorRecord] = Field(default_factory=list)
     # Durable review history used to recompute retention. Distinct from

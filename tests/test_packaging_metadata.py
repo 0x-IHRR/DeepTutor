@@ -253,3 +253,18 @@ def test_windows_mineru_worker_dependencies_match_every_install_surface() -> Non
         assert win32.marker.evaluate({"sys_platform": "win32"})
         assert not win32.marker.evaluate({"sys_platform": "linux"})
         assert not win32.marker.evaluate({"sys_platform": "darwin"})
+
+
+def test_legacy_page_lexical_engine_is_available_on_every_supported_python() -> None:
+    from packaging.requirements import Requirement
+
+    root = _project(REPOSITORY_ROOT / "pyproject.toml")
+    cli = _project(REPOSITORY_ROOT / "packaging" / "deeptutor-cli" / "pyproject.toml")
+    for dependencies in (
+        root["dependencies"],
+        root["optional-dependencies"]["cli"],
+        cli["dependencies"],
+        _cli_requirement_lines(),
+    ):
+        engine = next(Requirement(line) for line in dependencies if line.startswith("bm25s"))
+        assert engine.marker is None or engine.marker.evaluate({"python_version": "3.14"})
