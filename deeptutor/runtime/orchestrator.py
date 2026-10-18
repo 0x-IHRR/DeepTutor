@@ -21,6 +21,8 @@ from deeptutor.events.event_bus import Event, EventType, get_event_bus
 from deeptutor.runtime.registry.capability_registry import get_capability_registry
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.runtime.stream_bus import StreamBus, register_bus, unregister_bus
+from deeptutor.services.prompt.lookup import prompt_text
+from deeptutor.services.prompt.manager import get_prompt_manager
 
 logger = logging.getLogger(__name__)
 
@@ -145,9 +147,11 @@ class ChatOrchestrator:
                         "error_code": "capability_incomplete",
                         "retryable": True,
                     }
+                    prompts = get_prompt_manager().load_prompts(
+                        "capabilities", "turn_status", language=context.language
+                    )
                     await bus.error(
-                        "The requested operation did not complete. Please retry; "
-                        "previously saved work is preserved.",
+                        prompt_text(prompts, ("notices", "capability_incomplete")),
                         source=cap_name,
                         metadata={
                             "turn_terminal": True,

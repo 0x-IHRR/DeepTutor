@@ -179,7 +179,16 @@ class TestOrchestratorErrorHandling:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("completed", [False, True, None])
-    async def test_explicit_incomplete_result_controls_terminal_status(self, completed):
+    @pytest.mark.parametrize(
+        "language, notice",
+        [
+            ("en", "The requested operation did not complete"),
+            ("zh", "请求的操作未完成"),
+        ],
+    )
+    async def test_explicit_incomplete_result_controls_terminal_status(
+        self, completed, language, notice
+    ):
         class ResultCapability:
             async def run(self, _context, bus):
                 payload = {"response": "The requested operation was not delivered."}
@@ -188,7 +197,9 @@ class TestOrchestratorErrorHandling:
                 await bus.result(payload, source="chat")
 
         orch = _make_orchestrator({"chat": ResultCapability()})
-        events = [e async for e in orch.handle(UnifiedContext(user_message="practice"))]
+        events = [
+            e async for e in orch.handle(UnifiedContext(user_message="practice", language=language))
+        ]
         done = next(e for e in events if e.type == StreamEventType.DONE)
         if completed is False:
             assert done.metadata["status"] == "failed"
@@ -196,13 +207,16 @@ class TestOrchestratorErrorHandling:
             assert done.metadata["retryable"] is True
             error = next(e for e in events if e.type == StreamEventType.ERROR)
             assert error.metadata["turn_terminal"] is True
+            assert notice in error.content
             from deeptutor.services.session._turn_runtime_shared import (
                 _resolve_turn_failure_metadata,
                 _resolve_turn_outcome,
             )
+
             persisted = [
                 {"type": e.type.value, "content": e.content, "metadata": e.metadata}
-                for e in events if e is not done
+                for e in events
+                if e is not done
             ]
             assert _resolve_turn_outcome(persisted, done)[0] == "failed"
             assert _resolve_turn_failure_metadata(persisted) == ("capability_incomplete", True)
