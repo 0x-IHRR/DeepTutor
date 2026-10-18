@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 import logging
+import re
 from typing import Any, Awaitable, Callable
 
 from deeptutor.agents.base_agent import BaseAgent
@@ -23,7 +24,13 @@ from .ask_user_trace import (
     extract_ask_user_clarification_blocks,
     extract_ask_user_clarifications,
 )
-from .model_history import history_groups, model_turn, replay_history
+from .model_history import (
+    SUMMARY_SNAPSHOT_NAME,
+    history_groups,
+    model_turn,
+    replay_history,
+    summary_snapshot,
+)
 from .protocol import SessionStoreProtocol
 from .provider_response_state import normalize_provider_response_state
 
@@ -52,6 +59,45 @@ logger = logging.getLogger(__name__)
 # compression and URL length. Apply request projection before counting so only
 # images retained in the request consume this allowance; references remain text.
 IMAGE_CONTEXT_TOKEN_ESTIMATE = 4096
+
+
+# The summarizer's scratchpad has to be removed defensively: a custom
+# OpenAI-compatible route can emit the model's reasoning inline instead of on a
+# separate reasoning channel, and the observed output *began* with the drafting
+# monologue under an unclosed tag. ``clean_thinking_tags`` removes an unclosed
+# block through end of text, which here would have discarded the entire
+# summary, so the tag is only trusted when it is closed.
+_CLOSED_THINK_RE = re.compile(
+    r"<\s*think(?:ing)?\b[^>]*>.*?<\s*/\s*think(?:ing)?\s*>", re.DOTALL | re.IGNORECASE
+)
+_OPEN_THINK_RE = re.compile(r"^<\s*think(?:ing)?\b[^>]*>", re.IGNORECASE | re.DOTALL)
+_SUMMARY_SECTION_RE = re.compile(r"(?m)^[ \t]{0,3}#{1,6}[ \t]")
+_MIN_SALVAGED_CHARS = 200
+
+
+def sanitize_summary(text: str) -> str:
+    """Drop a leaked reasoning scratchpad without ever losing the summary.
+
+    A summary is replayed on every later turn until the next compaction, so
+    scratchpad that leaks into it is paid for on every request — and, because
+    the scratchpad is written first, it also eats the summarizer's generation
+    budget and truncates the real content.
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+    cleaned = _CLOSED_THINK_RE.sub("", raw).strip()
+    match = _OPEN_THINK_RE.match(cleaned)
+    if match is None:
+        return cleaned
+    body = cleaned[match.end() :]
+    # The tag was never closed: cut at the first heading the summarizer was
+    # told to emit, and accept the cut only when a real body survives it.
+    section = _SUMMARY_SECTION_RE.search(body)
+    if section is not None and len(body) - section.start() >= _MIN_SALVAGED_CHARS:
+        return body[section.start() :].strip()
+    # Unstructured output: drop the marker itself rather than the content.
+    return _OPEN_THINK_RE.sub("", cleaned).replace("</think>", "").strip() or raw
 
 
 def count_tokens(text: str) -> int:
@@ -347,7 +393,19 @@ class ContextBuilder:
         route: dict[str, str] | None = None,
     ) -> int:
         if any(model_turn(row) is not None for row in messages):
-            return _count_projected_model_tokens(replay_history(messages, summary, route))
+            replayed = replay_history(messages, route=route)
+            tokens = _count_projected_model_tokens(replayed)
+            # The answer loop appends the summary as a trailing snapshot, but
+            # only when it differs from the revision already replayed with the
+            # history. Count what the request will actually carry.
+            pending = summary_snapshot(summary)
+            if pending is not None and not any(
+                item.get("_context_snapshot") == SUMMARY_SNAPSHOT_NAME
+                and item.get("content") == pending["content"]
+                for item in replayed
+            ):
+                tokens += _count_model_context_tokens(pending)
+            return tokens
         return count_tokens(build_history_text(self._build_history(summary, messages))) + sum(
             _provider_response_state_tokens(row) for row in messages
         )
@@ -501,7 +559,7 @@ class ContextBuilder:
                 **replay_kwargs,
             ):
                 _chunks.append(_c)
-            summary = "".join(_chunks).strip()
+            summary = sanitize_summary("".join(_chunks))
             return self._finalize_summary(summary, summary_budget, outcome), events
         finally:
             await self._append_event(
@@ -539,6 +597,9 @@ class ContextBuilder:
             "unless new information contradicts them; drop only what is obsolete. "
             "Prefer concrete details (numbers, identifiers, exact terms) over "
             "abstract restatement. Never invent information. "
+            "Output the summary body only: no preamble, no drafting notes, no "
+            "step-by-step reasoning, and no <think> blocks — start directly at "
+            "the first heading. "
             f"Write the summary itself in {summary_language}."
         )
         if language.startswith("zh"):
@@ -552,6 +613,8 @@ class ContextBuilder:
                 "- 待办事项：未回答的问题、未完成的任务、已知阻塞\n"
                 "已有摘要中仍然有效的条目应原样保留，仅在新信息与之矛盾时修改，只删除确已过时"
                 "的内容。优先保留具体细节（数字、标识符、确切措辞），不要抽象转述，绝不虚构。"
+                "只输出摘要正文：不要输出任何思考过程或 <think> 标记，不要写草稿、不要写"
+                "「Let me…」「Draft:」之类的推演，直接从第一个小节标题开始。"
                 f"摘要正文本身请使用{summary_language}撰写。"
             )
         return system_prompt
@@ -669,6 +732,18 @@ class ContextBuilder:
                 "tools": previous_model_turn.get("tools"),
                 "rows": older_unsummarized,
             }
+            pending_summary = summary_snapshot(stored_summary)
+            if pending_summary is not None and not any(
+                message.get("content") == pending_summary["content"]
+                for message in replay_request["messages"]
+            ):
+                replay_request["messages"].append(
+                    {
+                        key: value
+                        for key, value in pending_summary.items()
+                        if key != "_context_snapshot"
+                    }
+                )
         try:
             self._summary_rows = older_unsummarized
             self._summary_prior = stored_summary

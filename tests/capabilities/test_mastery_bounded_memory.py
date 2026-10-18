@@ -352,3 +352,26 @@ async def test_one_oversized_exchange_uses_exact_recall_without_cutting_tool_pai
         for message in result.model_history
     )
     assert rows == original
+
+
+@pytest.mark.asyncio
+async def test_trailing_memory_snapshot_counts_toward_tutoring_budget():
+    from deeptutor.services.session.context_builder import _count_model_context_tokens
+    from deeptutor.services.session.model_history import summary_snapshot
+
+    rows = records(n=2, padding=1)
+    summary = memory(["hs-tutor-2"])
+    builder = MasteryContextBuilder(store_for(rows, summary=summary, watermark=2))
+    result = await builder.build(
+        session_id="s",
+        llm_config=SimpleNamespace(model="gpt-6.1-sol", context_window=272000, max_tokens=8192),
+    )
+    assert result.conversation_summary == summary
+    assert summary not in json.dumps(result.model_history)
+    expected = _count_model_context_tokens(result.model_history) + _count_model_context_tokens(
+        summary_snapshot(summary)
+    )
+    assert result.token_count == expected
+    assert builder._model_tokens([], summary) == _count_model_context_tokens(
+        []
+    ) + _count_model_context_tokens(summary_snapshot(summary))

@@ -184,7 +184,11 @@ async def test_compaction_preserves_whole_tool_turns_and_reuses_the_old_prefix()
     ]
     assert request["tools"] == recent["tools"]
     store.update_summary.assert_awaited_once_with("s", "Summary preserving the evidence", 2)
-    assert result.model_history[1:] == recent["messages"]
+    # The summary no longer occupies model_history[0]: the answer loop delivers
+    # it as a trailing runtime snapshot, so the replayed history starts at the
+    # oldest retained turn while the summary still reaches the model.
+    assert result.model_history == recent["messages"]
+    assert result.conversation_summary == "Summary preserving the evidence"
     assert result.conversation_history[-1]["content"] == "Displayed answer"
 
 
@@ -325,3 +329,45 @@ async def test_branch_replay_and_public_export_are_isolated(tmp_path):
     )
     tool_results = [m["content"] for m in built.model_history if m["role"] == "tool"]
     assert tool_results == ["A only"]
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("<think>private scratchpad</think>", ""),
+        (
+            "<thinking>private scratchpad</thinking>\n# Summary\nRetained facts",
+            "# Summary\nRetained facts",
+        ),
+        ("# Summary\nRetained facts", "# Summary\nRetained facts"),
+    ],
+)
+def test_summary_sanitizer_does_not_restore_removed_reasoning(raw, expected):
+    from deeptutor.services.session.context_builder import sanitize_summary
+
+    assert sanitize_summary(raw) == expected
+
+
+@pytest.mark.asyncio
+async def test_recompaction_retains_prior_summary_when_history_replay_has_no_summary_row():
+    records = (
+        rows(turn_record("already condensed"))
+        + rows(turn_record("evidence " * 1800), 3)
+        + rows(turn_record("recent"), 5)
+    )
+    store = MagicMock()
+    store.get_session = AsyncMock(
+        return_value={"compressed_summary": "Earlier stable preference", "summary_up_to_msg_id": 2}
+    )
+    store.get_messages_for_context = AsyncMock(return_value=records)
+    store.update_summary = AsyncMock()
+    builder = ContextBuilder(store)
+    builder._summarize = AsyncMock(return_value=("Updated summary", []))
+    await builder.build(
+        session_id="s",
+        llm_config=SimpleNamespace(model="gpt-test", max_tokens=512, context_window=4096),
+    )
+    request = builder._summarize.call_args.kwargs["replay_request"]
+    assert request["messages"][-1]["content"] == "[Conversation summary]\nEarlier stable preference"
+    assert all("_context_snapshot" not in message for message in request["messages"])
+    assert "already condensed" not in str(request["messages"])

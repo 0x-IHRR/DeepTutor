@@ -19,7 +19,12 @@ from deeptutor.services.session.context_builder import (
     build_history_text,
     count_tokens,
 )
-from deeptutor.services.session.model_history import history_groups, replay_group, replay_history
+from deeptutor.services.session.model_history import (
+    history_groups,
+    replay_group,
+    replay_history,
+    summary_snapshot,
+)
 
 _SECTIONS = ("learner_state", "preferences", "open_items", "teaching_history", "source_anchors")
 MEMORY_NOTICE = (
@@ -68,6 +73,14 @@ def archive_text(group: list[dict[str, Any]]) -> str:
     )
 
 
+def _memory_tokens(messages, summary):
+    # Historical runtime snapshots are removed by the tutor projection. The
+    # answer loop will append the current summary, so reserve it separately.
+    tokens = _count_model_context_tokens(deduplicate_user_images(messages))
+    snapshot = summary_snapshot(summary)
+    return tokens + (_count_model_context_tokens(snapshot) if snapshot else 0)
+
+
 class MasteryContextBuilder(ContextBuilder):
     """A cost-sized history plan, not a percentage of a huge model window."""
 
@@ -84,10 +97,8 @@ class MasteryContextBuilder(ContextBuilder):
         return summary
 
     def _model_tokens(self, messages, summary="", route=None):
-        return _count_model_context_tokens(
-            deduplicate_user_images(
-                project_mastery_replay(replay_history(messages, summary, route))
-            )
+        return _memory_tokens(
+            project_mastery_replay(replay_history(messages, route=route)), summary
         )
 
     async def build(self, *, session_id, leaf_message_id=None, **kwargs):
@@ -104,9 +115,7 @@ class MasteryContextBuilder(ContextBuilder):
             session_id=session_id, leaf_message_id=leaf_message_id, **kwargs
         )
         result.model_history = project_mastery_replay(result.model_history or [])
-        result.token_count = _count_model_context_tokens(
-            deduplicate_user_images(result.model_history)
-        )
+        result.token_count = _memory_tokens(result.model_history, result.conversation_summary)
         result.history_sources = sources
         if result.token_count > result.budget:
             # One complete historical exchange can itself exceed the plan.
@@ -126,10 +135,10 @@ class MasteryContextBuilder(ContextBuilder):
                 ),
             }
             result.conversation_summary = summary
-            result.model_history = [*replay_history([], summary), pointer]
+            result.model_history = [pointer]
             result.conversation_history = [*self._build_history(summary, []), pointer]
             result.context_text = build_history_text(result.conversation_history)
-            result.token_count = _count_model_context_tokens(result.model_history)
+            result.token_count = _memory_tokens(result.model_history, summary)
         return result
 
     def _summary_instruction(self, language):
