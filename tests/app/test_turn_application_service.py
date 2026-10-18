@@ -87,6 +87,126 @@ def submission_service(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_subscriber_waits_for_owned_terminal_envelope_and_replays_after_eviction(tmp_path):
+    """A slow subscriber must get the real DONE ids even across cleanup (#1971)."""
+    store = SQLiteSessionStore(tmp_path / "turns.db")
+    coordinator = MemoryCoordinator()
+    service, _ = _service(store, coordinator, "worker")
+    session = await store.ensure_session(None)
+    lease = await coordinator.acquire_turn("owned-terminal", session["id"], "worker")
+    assert lease is not None
+    await store.begin_turn(
+        session["id"],
+        turn_id=lease.turn_id,
+        owner_id=lease.owner_id,
+        fencing_token=lease.fencing_token,
+    )
+    await store.transition_turn(
+        lease.turn_id, "completed", expected_status="running", fencing_token=lease.fencing_token
+    )
+    subscription = service.subscribe_turn(lease.turn_id)
+    waiting = asyncio.create_task(anext(subscription))
+    try:
+        await asyncio.sleep(0.15)
+        assert not waiting.done(), "live owner has not published the real DONE yet"
+        done = await coordinator.publish_event(
+            lease.turn_id,
+            {
+                "type": "done",
+                "metadata": {"status": "completed", "assistant_message_id": "answer"},
+            },
+        )
+        await store.append_events(lease.turn_id, [done], fencing_token=lease.fencing_token)
+        await coordinator.release_turn(lease)
+        await coordinator.acknowledge_expired_turn(lease.turn_id)
+        received = await asyncio.wait_for(waiting, 2)
+        assert received["metadata"]["assistant_message_id"] == "answer"
+        assert not received["metadata"].get("synthesized")
+    finally:
+        waiting.cancel()
+        await asyncio.gather(waiting, return_exceptions=True)
+        await subscription.aclose()
+
+
+@pytest.mark.asyncio
+async def test_running_turn_flushes_visible_prefix_without_waiting_for_more_events(
+    submission_service,
+    monkeypatch,
+):
+    """A quiet model/tool must not leave already visible work only in RAM (#1971)."""
+    service, store, coordinator, registry, _ = submission_service
+    streamed = asyncio.Event()
+    finish = asyncio.Event()
+
+    class SlowOrchestrator:
+        async def handle(self, context):
+            yield StreamEvent(type=StreamEventType.CONTENT, content="visible prefix", source="chat")
+            streamed.set()
+            await finish.wait()
+            yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", SlowOrchestrator)
+    _, turn = await service.start_turn({"content": "Hello"})
+    try:
+        await asyncio.wait_for(streamed.wait(), 3)
+        await asyncio.sleep(0.6)
+        restarted = SQLiteSessionStore(store.db_path)
+        events = await restarted.get_events(turn["id"])
+        assert any(e.get("content") == "visible prefix" for e in events)
+        assert (await restarted.get_turn(turn["id"]))["status"] == "running"
+    finally:
+        finish.set()
+        [event async for event in service.subscribe_turn(turn["id"])]
+
+
+@pytest.mark.asyncio
+async def test_reconnect_after_done_keeps_the_live_post_turn_title(tmp_path):
+    store = SQLiteSessionStore(tmp_path / "turns.db")
+    coordinator = MemoryCoordinator()
+    service, _ = _service(store, coordinator, "worker")
+    session = await store.ensure_session(None)
+    lease = await coordinator.acquire_turn("title-tail", session["id"], "worker")
+    await store.begin_turn(
+        session["id"],
+        turn_id=lease.turn_id,
+        owner_id=lease.owner_id,
+        fencing_token=lease.fencing_token,
+    )
+    done = await coordinator.publish_event(
+        lease.turn_id,
+        {
+            "type": "done",
+            "metadata": {"status": "completed"},
+        },
+    )
+    await store.append_events(lease.turn_id, [done], fencing_token=lease.fencing_token)
+    await store.transition_turn(
+        lease.turn_id, "completed", expected_status="running", fencing_token=lease.fencing_token
+    )
+    stream = service.subscribe_turn(lease.turn_id)
+    assert (await anext(stream))["type"] == "done"
+    waiting = asyncio.create_task(anext(stream))
+    try:
+        await asyncio.sleep(0.05)
+        assert not waiting.done(), "terminal status is not the end of the owned title tail"
+        title = await coordinator.publish_event(
+            lease.turn_id,
+            {
+                "type": "session_meta",
+                "metadata": {"title": "Cell membrane"},
+            },
+        )
+        await store.append_events(lease.turn_id, [title], fencing_token=lease.fencing_token)
+        await coordinator.release_turn(lease)
+        await coordinator.acknowledge_expired_turn(lease.turn_id)
+        assert (await asyncio.wait_for(waiting, 2))["metadata"]["title"] == "Cell membrane"
+    finally:
+        waiting.cancel()
+        await asyncio.gather(waiting, return_exceptions=True)
+        await stream.aclose()
+
+
+@pytest.mark.asyncio
 async def test_replacement_endpoint_workflow_starts_once_and_branches_admitted_user(
     submission_service,
 ):
