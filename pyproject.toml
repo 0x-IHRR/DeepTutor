@@ -92,9 +92,7 @@ dependencies = [
     "loguru>=0.7.3,<1.0.0",
     "json-repair>=0.57.0,<1.0.0",
     "croniter>=6.0.0,<7.0.0",
-    # Process-tree memory readings for /api/system/memory. Soft dependency:
-    # deeptutor.runtime.memory_probe imports it lazily and falls back to /proc,
-    # so a missing wheel costs the settings strip, not the app.
+    # Process-tree memory readings and Windows MinerU worker ownership.
     "psutil>=5.9.0,<8.0.0",
     "pywin32; sys_platform == 'win32'",  # MinerU Job Object ownership
 ]
@@ -115,6 +113,8 @@ translation = "deeptutor.reading.translation:TranslationExtension"
 # already included in the public `deeptutor` wheel; the local CLI-only project
 # under `packaging/deeptutor-cli` uses the same list without Web assets/server deps.
 cli = [
+    "psutil>=5.9.0,<8.0.0",
+    "pywin32; sys_platform == 'win32'",  # MinerU Job Object ownership
     "packaging>=24.2",
     # LLM provider SDKs
     "anthropic>=0.30.0",
