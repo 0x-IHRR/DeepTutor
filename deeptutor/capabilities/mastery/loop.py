@@ -316,6 +316,11 @@ class MasteryLoopCapability:
 
                 # Always override model-supplied private kwargs.
                 updated["_teaching_delivery"] = teaching_delivery
+
+            if tool_name == "mastery_revise":
+                updated["_revision_request_id"] = str(
+                    context.extension("agent_loop").get("model_call_id") or ""
+                )
             if tool_name == "mastery_mode":
                 # The narrowest handle on the turn for a tool that changes what
                 # the rest of it may do — the same shape as ``_bind_active_path``
