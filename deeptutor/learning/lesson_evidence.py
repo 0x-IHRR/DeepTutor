@@ -490,7 +490,7 @@ def _repair_request(feedback: dict[str, Any]) -> dict[str, Any]:
         or not repair["reason"].strip()
     ):
         raise LessonUnavailable(
-            "A hiányhoz nincs konkrét, biztonságos javítási javaslat. Szűkítsd a témát vagy ellenőrizd a forrást."
+            "No specific, safe repair is available for this gap. Narrow the objective or check the source."
         )
     return {**repair, "reason": repair["reason"].strip()[:500]}
 
@@ -504,7 +504,7 @@ def _repair_page(
         raise LessonUnavailable("Invalid repair source index.")
     if len(sources) >= 6:
         raise LessonUnavailable(
-            "A célzott javítás túllépné a hatoldalas keretet. Szűkítsd a tanulási célt."
+            "The targeted repair would exceed the six-page limit. Narrow the learning objective."
         )
     original = sources[start + local]
     ref = SourceRef.model_validate(original["ref"])
@@ -964,14 +964,16 @@ async def prepare_lesson(
                     complete = True
                     break
             feedback = feedback or ranking
-            gap = str(feedback.get("limitations") or feedback.get("missing") or "Hiányos forrás.")[
-                :500
-            ]
+            gap = str(
+                feedback.get("limitations")
+                or feedback.get("missing")
+                or prompt_text(prompts, ("preparation", "incomplete_sources"))
+            )[:500]
             if attempt:
                 if verified_sources:
                     break
                 raise LessonUnavailable(
-                    "Az egyszeri célzott javítás után is hiányos a forrás: " + gap
+                    prompt_text(prompts, ("preparation", "repair_incomplete")) + gap
                 )
             if feedback.get("repair") is None and verified_sources:
                 break

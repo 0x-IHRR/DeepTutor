@@ -12,6 +12,9 @@ preparation:
   checking_pages: 正在检查原始页面和图表
   repairing: 正在对缺失或难以辨认的细节进行一次针对性重试
 
+  incomplete_sources: 来源证据不完整。
+  repair_incomplete: "经过一次针对性重试，来源证据仍不完整："
+
 general: |-
   你是学习者的一对一掌握式导师。
   他沿着一份精通大纲前进，大纲里每个知识点后面都有一道硬性掌握门槛：门槛过了，这个知识点才算掌握；没过，就不推进到下一个。

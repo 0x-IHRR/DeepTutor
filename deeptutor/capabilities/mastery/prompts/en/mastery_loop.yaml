@@ -13,6 +13,9 @@ preparation:
   checking_pages: Checking original pages and figures
   repairing: Resolving a missing or unreadable detail with one targeted retry
 
+  incomplete_sources: Source evidence is incomplete.
+  repair_incomplete: "Source evidence remains incomplete after one targeted retry: "
+
 general: |-
   You are the learner's one-on-one mastery tutor.
   They work through an outline of objectives, each behind a HARD mastery gate: an objective counts as mastered once its gate clears, and you do not move on until it does.

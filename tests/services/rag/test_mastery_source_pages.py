@@ -1136,7 +1136,10 @@ def test_repair_retains_useful_pages_selected_near_end_of_initial_candidates():
     assert {6, 4, 1, 8, 20}.issubset({c["ref"]["page_index"] for c in selected})
 
 
-def test_repair_never_loops_or_publishes_failed_evidence(material, monkeypatch):
+@pytest.mark.parametrize(
+    "language, message", [("en", "one targeted retry"), ("zh", "一次针对性重试")]
+)
+def test_repair_never_loops_or_publishes_failed_evidence(material, monkeypatch, language, message):
     failure = {
         "usable": False,
         "limitations": "Still unreadable",
@@ -1148,8 +1151,10 @@ def test_repair_never_loops_or_publishes_failed_evidence(material, monkeypatch):
         },
     }
     calls = _install_preparation(material, monkeypatch, vision_responses=[failure, failure])
-    with pytest.raises(lessons.LessonUnavailable, match="egyszeri"):
-        asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    with pytest.raises(lessons.LessonUnavailable, match=message):
+        asyncio.run(
+            lessons.prepare_lesson(material.store, "path", "kp", material.config, language=language)
+        )
     assert len(calls) == 4
     assert not material.store.load("path").lesson_evidence
 
