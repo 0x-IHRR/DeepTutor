@@ -28,6 +28,7 @@ from deeptutor.services.llm.image_caption_batch import ImageCaptionBatcher
 from deeptutor.services.llm.image_caption_cache import complete_image_caption
 from deeptutor.services.llm.image_description import get_image_description_client
 from deeptutor.services.rag.file_routing import FileTypeRouter
+from deeptutor.services.rag.source_pages import SourcePageError
 from deeptutor.services.rag.visual_assets import VisualAssetCandidate, collect_visual_assets
 from deeptutor.utils.document_validator import DocumentValidator
 
@@ -92,31 +93,42 @@ class LlamaIndexDocumentLoader:
             # archive download) on a synchronous httpx.Client — running it on
             # the event loop stalls every other request for the whole PDF
             # (same class of bug as upstream #761/#777). Hand it to a thread.
-            text, extracted_images, parse_engine = await asyncio.to_thread(
-                self._parse_document, file_path, kb_dir=kb_dir
-            )
-            scanned_pdf_needs_ocr = (
-                file_path.suffix.lower() == ".pdf"
-                and not text.strip()
-                and parse_engine != _PDF_OCR_FALLBACK_ENGINE
-            )
-            if scanned_pdf_needs_ocr:
-                fallback = await asyncio.to_thread(
-                    self._parse_document,
-                    file_path,
-                    None,
-                    _PDF_OCR_FALLBACK_ENGINE,
-                    kb_dir=kb_dir,
+            try:
+                text, extracted_images, parse_engine = await asyncio.to_thread(
+                    self._parse_document, file_path, kb_dir=kb_dir
                 )
-                if fallback[0].strip() or fallback[1]:
-                    text, extracted_images, parse_engine = fallback
-                    scanned_pdf_needs_ocr = False
-                else:
-                    self._log_scanned_pdf_without_ocr(
+                scanned_pdf_needs_ocr = (
+                    file_path.suffix.lower() == ".pdf"
+                    and not text.strip()
+                    and parse_engine != _PDF_OCR_FALLBACK_ENGINE
+                )
+                if scanned_pdf_needs_ocr:
+                    fallback = await asyncio.to_thread(
+                        self._parse_document,
                         file_path,
-                        parse_engine,
-                        len(extracted_images),
+                        None,
+                        _PDF_OCR_FALLBACK_ENGINE,
+                        kb_dir=kb_dir,
                     )
+                    if fallback[0].strip() or fallback[1]:
+                        text, extracted_images, parse_engine = fallback
+                        scanned_pdf_needs_ocr = False
+                    else:
+                        self._log_scanned_pdf_without_ocr(
+                            file_path,
+                            parse_engine,
+                            len(extracted_images),
+                        )
+            except SourcePageError as exc:
+                # Parsing can succeed while the original PDF is unreadable.
+                # Keep that document's failure isolated and visible (#1982).
+                from deeptutor.knowledge.indexing_run import current_run
+
+                self._pdf_documents.pop(str(file_path), None)
+                self.logger.warning("Skipped %s: %s", file_path.name, exc)
+                if run := current_run():
+                    run.document(file_path, "failed", reason="invalid_source", detail=str(exc))
+                continue
             if not scanned_pdf_needs_ocr:
                 page_documents = self._pdf_documents.pop(str(file_path), [])
                 if page_documents:
@@ -239,9 +251,14 @@ class LlamaIndexDocumentLoader:
 
         text = parsed.markdown.strip() or self._text_from_blocks(parsed.blocks)
         if kb_dir is not None and file_path.suffix.lower() == ".pdf":
+            import pymupdf
+
             from deeptutor.services.rag.source_pages import build_pdf_documents
 
-            self._pdf_documents[str(file_path)] = build_pdf_documents(file_path, parsed, kb_dir)
+            try:
+                self._pdf_documents[str(file_path)] = build_pdf_documents(file_path, parsed, kb_dir)
+            except (pymupdf.FileDataError, OSError) as exc:
+                raise SourcePageError(f"Cannot read PDF page evidence: {exc}") from exc
         images = self._collect_asset_images(parsed.asset_dir, origin=file_path)
         if kb_dir is not None:
             from deeptutor.services.rag.visual_coverage import record_coverage
