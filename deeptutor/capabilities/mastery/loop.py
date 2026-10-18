@@ -359,6 +359,21 @@ class MasteryLoopCapability:
                 # A replacement needs a quote from the actual current learner
                 # request, not a model-supplied claim about their intention.
                 updated["_learner_message"] = context.user_message or ""
+            if tool_name == "mastery_prepare_lesson":
+                from deeptutor.learning.policy import next_objective
+                from deeptutor.learning.storage import LearningStore
+
+                def bind_lesson(kp_id):
+                    progress = LearningStore().load(path_id)
+                    context.metadata["mastery_lesson_objective"] = {
+                        "path_id": path_id,
+                        "kp_id": kp_id,
+                        "policy_id": next_objective(progress).knowledge_point_id
+                        if progress
+                        else "",
+                    }
+
+                updated["_bind_lesson_objective"] = bind_lesson
             if tool_name == "mastery_mode":
                 # The narrowest handle on the turn for a tool that changes what
                 # the rest of it may do — the same shape as ``_bind_active_path``

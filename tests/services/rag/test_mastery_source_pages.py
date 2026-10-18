@@ -33,6 +33,59 @@ from deeptutor.services.rag.source_pages import (
 )
 
 
+@pytest.mark.asyncio
+async def test_successful_explicit_preparation_supersedes_same_turn_failure(material, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from deeptutor.capabilities.mastery.pipeline import MasteryLoopPipeline
+    from deeptutor.capabilities.mastery.tools import MasteryPrepareLessonTool
+    from deeptutor.core.context import UnifiedContext
+    from deeptutor.runtime.stream_bus import StreamBus
+
+    _install_preparation(material, monkeypatch)
+    actual_prepare = lessons.prepare_lesson
+    automatic = AsyncMock(side_effect=lessons.LessonUnavailable("Initial coverage incomplete"))
+    monkeypatch.setattr(lessons, "prepare_lesson", automatic)
+    monkeypatch.setattr("deeptutor.learning.storage.LearningStore", lambda: material.store)
+    monkeypatch.setattr(
+        "deeptutor.capabilities.mastery.tools._new_service", lambda: LearningService(material.store)
+    )
+    monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: material.config)
+    pipeline = MasteryLoopPipeline(language="en")
+    pipeline.llm_config = material.config
+    context = UnifiedContext(user_message="Continue teaching", metadata={"mastery_path_id": "path"})
+    messages = [{"role": "user", "content": context.user_message}]
+    stream = StreamBus()
+    assert await pipeline.prepare_model_request(context, stream, messages) == []
+    assert "not prepared" in messages[-1]["content"]
+    automatic.assert_not_awaited()
+    before = material.store.load("path").model_dump()
+    with pytest.raises(MasteryInteractionError):
+        LearningService(material.store).register_question(
+            "path",
+            PendingQuestion(
+                question_id="unsupported", knowledge_point_id="kp", expected_answer="lipids"
+            ),
+        )
+    assert material.store.load("path").model_dump() == before
+    failed = await MasteryPrepareLessonTool().execute(
+        knowledge_point_id="kp", _mastery_path_id="path"
+    )
+    assert not failed.success and "Initial coverage incomplete" in failed.content
+    assert await pipeline.prepare_model_request(context, stream, messages) == []
+    assert automatic.await_count == 1  # The explicit tool attempt, not the hook.
+    monkeypatch.setattr(lessons, "prepare_lesson", actual_prepare)
+    prepared = await MasteryPrepareLessonTool().execute(
+        knowledge_point_id="kp", _mastery_path_id="path"
+    )
+    assert prepared.success and "VERIFIED ACTIVE LESSON" in prepared.content
+    assert await pipeline.prepare_model_request(context, stream, messages)
+    assert automatic.await_count == 1
+    assert len([m for m in messages if m.get("_lesson_packet")]) == 1
+    assert "VERIFIED ACTIVE LESSON" in messages[-1]["content"]
+    assert not material.store.load("path").mastery_levels
+
+
 @pytest.fixture
 def material(tmp_path, monkeypatch):
     raw = tmp_path / "kb" / "raw"
@@ -132,6 +185,72 @@ def material(tmp_path, monkeypatch):
         ref=ref,
         config=SimpleNamespace(model="vision-test", binding="openai"),
     )
+
+
+def test_source_guard_rejects_recording_unprepared_teaching(material, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: LearningService(material.store))
+    before = material.store.load("path").model_dump()
+    result = asyncio.run(
+        tools.MasteryNoteExplainedTool().execute(
+            _mastery_path_id="path", knowledge_point_id="kp", summary="A proposed explanation"
+        )
+    )
+    assert not result.success
+    assert material.store.load("path").model_dump() == before
+
+
+def test_source_guard_records_only_partial_coverage_and_rechecks_access(material, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    _install_preparation(material, monkeypatch, rankings=[_partial_selection()])
+    asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    monkeypatch.setattr(tools, "_new_service", lambda: LearningService(material.store))
+    from deeptutor.runtime.stream_bus import StreamBus
+
+    explanation = "The membrane's bilayer forms the supported boundary around the cell."
+    bus = StreamBus(assign_seq=True)
+    asyncio.run(bus.content(explanation, source="mastery_path", stage="responding"))
+    teaching = {
+        "_session_id": "session",
+        "_turn_id": "turn",
+        "explanation_quote": explanation,
+        "_teaching_delivery": lambda: {
+            "path_id": "path",
+            "session_id": "session",
+            "turn_id": "turn",
+            "segments": bus.public_content_snapshot(source="mastery_path", stage="responding"),
+        },
+    }
+    result = asyncio.run(
+        tools.MasteryNoteExplainedTool().execute(
+            _mastery_path_id="path",
+            knowledge_point_id="kp",
+            summary="Only the supported bilayer slice",
+            **teaching,
+        )
+    )
+    assert result.success, result.content
+    progress = material.store.load("path")
+    assert progress.explained_objectives["kp"]["coverage"] == "partial"
+    assert (
+        not progress.mastery_levels
+        and not progress.quiz_attempts
+        and not progress.learning_evidence
+    )
+    before = progress.model_dump()
+    monkeypatch.setattr("deeptutor.multi_user.knowledge_access.resolve_for_rag", lambda _: None)
+    denied = asyncio.run(
+        tools.MasteryNoteExplainedTool().execute(
+            _mastery_path_id="path",
+            knowledge_point_id="kp",
+            summary="An unsupported later claim",
+            **teaching,
+        )
+    )
+    assert not denied.success
+    assert material.store.load("path").model_dump() == before
 
 
 def test_physical_pages_beyond_64_and_unlocated_text_preserved(material):

@@ -475,6 +475,10 @@ class AgentLoop:
                     tool_choice=(self.pipeline.initial_tool_choice if state.rounds == 0 else None),
                 )
             except Exception as exc:
+                from deeptutor.core.capability_protocol import CapabilityPrerequisiteError
+
+                if isinstance(exc, CapabilityPrerequisiteError):
+                    raise
                 # A mid-loop LLM failure (timeout / transient network) must not
                 # discard a turn that already gathered useful work. Salvage it
                 # with a forced finish; only a failure on the very first round
@@ -920,6 +924,10 @@ class AgentLoop:
             # prevents callers from offering an accurate retry action.
             raise
         except Exception as exc:
+            from deeptutor.core.capability_protocol import CapabilityPrerequisiteError
+
+            if isinstance(exc, CapabilityPrerequisiteError):
+                raise
             # The salvage call itself failed (e.g. the provider is still
             # returning unusable data). Don't bubble up and lose the turn —
             # emit the graceful fallback answer instead.
@@ -1080,12 +1088,20 @@ class AgentLoop:
         defer_visible_output: bool = False,
         tool_choice: str | None = None,
     ) -> LLMCallResult:
+        prepare = getattr(self.pipeline, "prepare_model_request", None)
+        lesson_messages = await prepare(self.context, self.stream, messages) if prepare else []
         request_messages = with_transient_model_messages(messages, self._transient_model_messages)
-        # Guard the same request representation we send. Raw repeated images
-        # must not cause tool evidence to be snipped before image projection.
+        # Current tool pixels take precedence over cached lesson pages. Neither
+        # belongs in the durable dialogue; the hook runs again on forced finish.
+        if lesson_messages and not has_image_parts(self._transient_model_messages):
+            request_messages = [*request_messages, *lesson_messages]
         projected_messages = deduplicate_user_images(
             [
-                {key: value for key, value in message.items() if key != "_context_snapshot"}
+                {
+                    key: value
+                    for key, value in message.items()
+                    if key not in {"_context_snapshot", "_lesson_packet"}
+                }
                 for message in request_messages
             ]
         )

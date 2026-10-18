@@ -16,6 +16,7 @@ from pathlib import Path
 import time
 from typing import Any
 
+from deeptutor.core.capability_protocol import CapabilityPrerequisiteError
 from deeptutor.learning.policy import find_knowledge_point
 from deeptutor.services.rag.source_pages import (
     CATALOG_FILENAME,
@@ -32,7 +33,7 @@ PREPARATION_VERSION = 2
 MAX_LESSON_PAGES = 6
 
 
-class LessonUnavailable(ValueError):
+class LessonUnavailable(CapabilityPrerequisiteError):
     """Stop source-grounded tutoring, rather than silently fall back to guesses."""
 
 
