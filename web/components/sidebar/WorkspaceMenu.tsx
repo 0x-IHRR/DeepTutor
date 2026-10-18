@@ -6,6 +6,7 @@ import { useId, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, Settings, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useMenuPopover } from '@/shared/ui/useMenuPopover'
+import Tooltip from '@/shared/ui/Tooltip'
 import { useWorkspaceChoices } from '@/components/workspaces/useWorkspaceChoices'
 import { VersionBadge } from '@/components/sidebar/VersionBadge'
 
@@ -68,7 +69,16 @@ export function WorkspaceChoiceList({ onChoose }: { onChoose?: () => void }) {
  * The sidebar's header: which workspace this is, and the account-level
  * places (workspaces, settings, profile) that used to sit in the footer.
  */
-export function WorkspaceMenu({ accountSlot, onNavigate }: { accountSlot?: ReactNode; onNavigate?: () => void }) {
+export function WorkspaceMenu({
+  accountSlot,
+  onNavigate,
+  compact = false,
+}: {
+  accountSlot?: ReactNode
+  onNavigate?: () => void
+  /** The collapsed rail's form: the workspace's mark alone, opening beside the rail. */
+  compact?: boolean
+}) {
   const { t } = useTranslation()
   const { active, currentName } = useWorkspaceChoices()
   const [open, setOpen] = useState(false)
@@ -79,19 +89,35 @@ export function WorkspaceMenu({ accountSlot, onNavigate }: { accountSlot?: React
     onNavigate?.()
   }
   return (
-    <div ref={rootRef} className="dt-workspace-menu">
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={menuId}
-        onClick={() => setOpen(value => !value)}
-        className="dt-workspace-trigger"
-      >
-        <WorkspaceGlyph name={currentName} general={!active} />
-        <span className="min-w-0 flex-1 truncate text-left">{currentName}</span>
-        <ChevronDown size={14} strokeWidth={1.8} className="shrink-0 opacity-60" />
-      </button>
+    <div ref={rootRef} className={`dt-workspace-menu ${compact ? 'is-rail' : ''}`}>
+      {compact ? (
+        <Tooltip label={currentName} description={t('Manage workspaces')} side="right" suppressed={open}>
+          <button
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={open}
+            aria-controls={menuId}
+            aria-label={currentName}
+            onClick={() => setOpen(value => !value)}
+            className="dt-workspace-trigger"
+          >
+            <WorkspaceGlyph name={currentName} general={!active} />
+          </button>
+        </Tooltip>
+      ) : (
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={menuId}
+          onClick={() => setOpen(value => !value)}
+          className="dt-workspace-trigger"
+        >
+          <WorkspaceGlyph name={currentName} general={!active} />
+          <span className="min-w-0 flex-1 truncate text-left">{currentName}</span>
+          <ChevronDown size={14} strokeWidth={1.8} className="shrink-0 opacity-60" />
+        </button>
+      )}
       {open && (
         <div id={menuId} role="menu" aria-label={t('Manage workspaces')} className="dt-popover dt-workspace-panel">
           <WorkspaceChoiceList onChoose={close} />

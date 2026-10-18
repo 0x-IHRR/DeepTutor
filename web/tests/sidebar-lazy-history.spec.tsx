@@ -118,7 +118,8 @@ it("keeps Home pinned even when a previous layout folded it into More", () => {
   expect(screen.getAllByRole("tab", { name: "navigation.home" })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Arrange Home" })).toBeNull();
   fireEvent.click(screen.getByRole("link", { name: "navigation.newChat" }));
-  expect(fixture.push).toHaveBeenCalledWith("/chat");
+  // The new chat stays in the tab's workspace (General here).
+  expect(fixture.push).toHaveBeenCalledWith("/chat?dt_workspace=");
 });
 
 it("resizes with the keyboard, persists across mounts, and resets on double click", () => {

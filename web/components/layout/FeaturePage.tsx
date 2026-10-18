@@ -1,5 +1,6 @@
 import type { ComponentPropsWithRef, ReactNode, Ref, UIEventHandler } from 'react'
 import type { LucideIcon } from 'lucide-react'
+import { PageBarSlot } from './PageChrome'
 
 /** Feature page standard, based on Personalized Learning:
  * - Centered 1180px outer box; horizontal gutters 24px, 36px from 768px.
@@ -56,10 +57,16 @@ export function FeaturePage({
 export const PAGE_TITLE_CLASS = 'dt-page-title min-w-0 break-words font-semibold leading-normal tracking-[-0.02em] text-[var(--foreground)]'
 export const PAGE_DESCRIPTION_CLASS = 'mt-1.5 max-w-2xl text-[12.5px] leading-relaxed text-[var(--muted-foreground)]'
 export const PAGE_SECTION_TITLE_CLASS = 'text-[13.5px] font-semibold text-[var(--foreground)]'
+const PAGE_ACTIONS_CLASS = 'flex max-w-full shrink-0 flex-wrap items-center gap-2 [&>div]:max-w-full [&>div]:flex-wrap'
 
 /** No divider. A page icon is drawn only where the UI layout shows it
  * (`.dt-page-icon` is hidden by default; the modern layout reveals it).
  * Secondary sections use h2 so a feature page always has one main heading.
+ *
+ * Under a page bar the main header's actions (and, on the section page
+ * itself, its meta) move into the bar, and the section page's own title
+ * steps back to a heading for assistive technology only: the bar already
+ * names the page. Detail pages keep their title — it is their content.
  */
 export function PageHeader({
   title,
@@ -82,7 +89,7 @@ export function PageHeader({
 }) {
   const Heading = level === 1 ? 'h1' : 'h2'
   return (
-    <header data-page-header className="dt-page-header mb-6 flex min-w-0 flex-col gap-4">
+    <header data-page-header data-level={level} className="dt-page-header mb-6 flex min-w-0 flex-col gap-4">
       <div className="min-w-0">
         {Icon && level === 1 && (
           <span aria-hidden className="dt-page-icon">
@@ -93,11 +100,20 @@ export function PageHeader({
           <Heading id={titleId} data-tour={headingTour} className={level === 1 ? PAGE_TITLE_CLASS : PAGE_SECTION_TITLE_CLASS}>
             {title}
           </Heading>
-          {meta}
+          {meta && (level === 1 ? <PageBarSlot name="meta">{meta}</PageBarSlot> : meta)}
         </div>
         {description && <p className={PAGE_DESCRIPTION_CLASS}>{description}</p>}
       </div>
-      {action && <div data-page-actions className="flex max-w-full shrink-0 flex-wrap items-center gap-2 [&>div]:max-w-full [&>div]:flex-wrap">{action}</div>}
+      {action &&
+        (level === 1 ? (
+          <PageBarSlot name="actions" className={PAGE_ACTIONS_CLASS}>
+            {action}
+          </PageBarSlot>
+        ) : (
+          <div data-page-actions className={PAGE_ACTIONS_CLASS}>
+            {action}
+          </div>
+        ))}
     </header>
   )
 }

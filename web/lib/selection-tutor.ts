@@ -2,11 +2,18 @@ const MAX_SELECTED_TEXT_LENGTH = 12_000;
 const MAX_SOURCE_MESSAGE_LENGTH = 24_000;
 
 export interface SelectionTutorContext {
+  /** ``selection`` (default) tutors one passage; ``conversation`` is a side
+   *  chat about the whole parent conversation and carries no selection. */
+  scope?: "selection" | "conversation";
   selectedText: string;
   parentSessionId: string | null;
+  /** The selection's containing message — or, for a side chat, the tip of the
+   *  branch the learner was looking at. */
   sourceMessageId: number | null;
   sourceMessageText: string;
   sourceMessageRole: "user" | "assistant" | "system";
+  /** Shown on a side chat's context card; never sent. */
+  parentTitle?: string;
 }
 
 /** Collapse selection-only whitespace while preserving paragraph breaks. */
@@ -43,9 +50,24 @@ export function selectionTutorKey(
   return `selection-tutor:${parentSessionId ?? "draft"}:${(hash >>> 0).toString(36)}`;
 }
 
+/** A fresh side chat each time one is started; its thread is found again by
+ *  session id once the backend assigns one. */
+export function sideChatKey(parentSessionId: string): string {
+  return `side-chat:${parentSessionId}:${Date.now().toString(36)}`;
+}
+
 export function buildSelectionTutorConfig(
   context: SelectionTutorContext,
 ): Record<string, unknown> {
+  if (context.scope === "conversation") {
+    return {
+      selection_tutor_context: {
+        scope: "conversation",
+        parent_session_id: context.parentSessionId ?? "",
+        source_message_id: context.sourceMessageId,
+      },
+    };
+  }
   return {
     selection_tutor_context: {
       selected_text: normalizeSelectedText(context.selectedText),

@@ -1,18 +1,20 @@
 'use client'
 
 import { FeaturePage, pageGridClass } from '@/components/layout/FeaturePage'
+import { useTaskBlocks } from '@/features/calendar/store/calendar-store'
+import { activeWorkspaceId } from '@/lib/workspace-scope'
+import Link from 'next/link'
+import { addDays, dateKey, startOfWeek } from '@/features/calendar/model/dates'
 import { useRef, useState } from 'react'
 import {
   Archive,
   ArrowLeft,
   ArrowRight,
   Check,
-  ChevronDown,
   CircleCheck,
   CircleDashed,
   CircleDot,
   Columns3,
-  Folder,
   Plus,
   RotateCcw,
   X,
@@ -33,7 +35,6 @@ import {
 } from '@/lib/task-board-api'
 
 import { useTaskBoard, refreshTaskBoard } from '@/lib/task-board-store'
-import { useChatWorkspaces } from '@/hooks/useChatWorkspaces'
 
 const columns = [
   { id: 'todo', title: 'kanban.todo', hint: 'kanban.todoHint', icon: CircleDashed },
@@ -44,11 +45,13 @@ const columns = [
 export default function KanbanBoard() {
   const { t } = useTranslation()
   const { board, error: loadError } = useTaskBoard()
-  const { workspaces } = useChatWorkspaces()
+  const blocks = useTaskBlocks(activeWorkspaceId())
   const [title, setTitle] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
   const [draftTitle, setDraftTitle] = useState('')
   const [draftNote, setDraftNote] = useState('')
+  const [dueDate, setDueDate] = useState('')
+  const [dateFilter, setDateFilter] = useState('all')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [dragged, setDragged] = useState<string | null>(null)
@@ -76,10 +79,22 @@ export default function KanbanBoard() {
     setEditing(card.id)
     setDraftTitle(card.title)
     setDraftNote(card.note)
+    setDueDate(card.due_date ?? '')
   }
 
   const active = board?.cards.filter(card => !card.archived) ?? []
-  const visible = board?.cards.filter(card => card.archived === showArchived) ?? []
+  const today = dateKey(new Date())
+  const weekEnd = dateKey(addDays(startOfWeek(new Date(), 1), 7))
+  const visible =
+    board?.cards.filter(
+      card =>
+        card.archived === showArchived &&
+        (dateFilter === 'all' ||
+          (card.due_date &&
+            (dateFilter === 'today'
+              ? card.due_date === today
+              : card.due_date >= dateKey(startOfWeek(new Date(), 1)) && card.due_date < weekEnd)))
+    ) ?? []
   const count = (status: TaskStatus) => visible.filter(card => card.status === status).length
 
   return (
@@ -119,6 +134,19 @@ export default function KanbanBoard() {
           }
         />
 
+        <div className="mb-3 flex items-center justify-between text-xs">
+          <select
+            aria-label={t('Filter by date')}
+            value={dateFilter}
+            onChange={e => setDateFilter(e.target.value)}
+            className="bg-transparent"
+          >
+            <option value="all">{t('All dates')}</option>
+            <option value="today">{t('Today')}</option>
+            <option value="week">{t('This week')}</option>
+          </select>
+          <Link href="/calendar">{t('Open calendar')}</Link>
+        </div>
         <form
           className="mb-6 flex items-center gap-2 rounded-xl border border-border/80 bg-card p-1.5 transition-[border-color,box-shadow] focus-within:border-primary/40 focus-within:ring-[3px] focus-within:ring-primary/5"
           onSubmit={event => {
@@ -239,7 +267,11 @@ export default function KanbanBoard() {
                             if (draftTitle.trim())
                               void act(
                                 () =>
-                                  updateTaskCard(card.id, { title: draftTitle, note: draftNote }),
+                                  updateTaskCard(card.id, {
+                                    title: draftTitle,
+                                    note: draftNote,
+                                    due_date: dueDate || null,
+                                  }),
                                 () => setEditing(null)
                               )
                           }}
@@ -260,6 +292,16 @@ export default function KanbanBoard() {
                             value={draftNote}
                             onChange={event => setDraftNote(event.target.value)}
                           />
+                          <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                            {t('Due date')}
+                            <input
+                              type="date"
+                              aria-label={t('Due date')}
+                              value={dueDate}
+                              onChange={e => setDueDate(e.target.value)}
+                              className="rounded border border-border bg-background px-2 py-1"
+                            />
+                          </label>
                           <div className="mt-2 flex gap-2">
                             <button
                               disabled={busy || !draftTitle.trim()}
@@ -289,59 +331,24 @@ export default function KanbanBoard() {
                             <strong className="block break-words text-[13px] font-medium leading-6">
                               {card.title}
                             </strong>
+                            {card.due_date && (
+                              <span
+                                className={`mt-1 inline-block text-[11px] ${card.status !== 'done' && card.due_date < today ? 'text-destructive' : card.due_date === today ? 'text-primary' : 'text-muted-foreground'}`}
+                              >
+                                {t('Due {{date}}', { date: card.due_date })}
+                              </span>
+                            )}
+                            {blocks[card.id] > 0 && (
+                              <span className="ml-2 text-[11px] text-muted-foreground">
+                                {t('{{count}} time blocks', { count: blocks[card.id] })}
+                              </span>
+                            )}
                             {card.note && (
                               <p className="mt-1.5 whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground">
                                 {card.note}
                               </p>
                             )}
                           </button>
-                          <label className="relative mt-3 inline-flex max-w-full items-center gap-1.5 rounded-md bg-muted/50 px-2 py-1 text-[11px] leading-4 text-muted-foreground transition-colors hover:bg-muted focus-within:ring-2 focus-within:ring-ring/40">
-                            <Folder aria-hidden size={11} strokeWidth={1.7} className="shrink-0" />
-                            <span className="truncate">
-                              {card.workspace_id === null
-                                ? t('tasks.unassigned')
-                                : card.workspace_id === ''
-                                  ? t('General workspace')
-                                  : (workspaces.find(row => row.workspace_id === card.workspace_id)
-                                      ?.display_name ?? t('tasks.assign'))}
-                            </span>
-                            <ChevronDown
-                              aria-hidden
-                              size={11}
-                              strokeWidth={1.7}
-                              className="shrink-0 opacity-60"
-                            />
-                            <select
-                              aria-label={`${card.title}: ${t('tasks.assign')}`}
-                              disabled={busy}
-                              value={card.workspace_id ?? '__unassigned__'}
-                              onChange={event =>
-                                void act(() =>
-                                  updateTaskCard(card.id, {
-                                    workspace_id:
-                                      event.target.value === '__unassigned__'
-                                        ? null
-                                        : event.target.value,
-                                  })
-                                )
-                              }
-                              className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-default"
-                            >
-                              <option value="__unassigned__">{t('tasks.unassigned')}</option>
-                              <option value="">{t('General workspace')}</option>
-                              {workspaces
-                                .filter(row => row.kind === 'workspace')
-                                .map(row => (
-                                  <option
-                                    key={row.workspace_id}
-                                    value={row.workspace_id}
-                                    disabled={row.archived || row.status !== 'ready'}
-                                  >
-                                    {row.display_name}
-                                  </option>
-                                ))}
-                            </select>
-                          </label>
                           <div className="pointer-events-none absolute -right-0.5 -top-0.5 flex items-center gap-0.5 rounded-r-md bg-gradient-to-l from-popover from-80% to-transparent pl-4 opacity-0 transition-opacity duration-150 group-hover/kanban-card:pointer-events-auto group-hover/kanban-card:opacity-100 group-has-[:focus-visible]/kanban-card:pointer-events-auto group-has-[:focus-visible]/kanban-card:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
                             {!showArchived && index > 0 && (
                               <Tooltip label={t('kanban.back')}>
@@ -411,9 +418,7 @@ export default function KanbanBoard() {
             </section>
           ))}
         </div>
-        <p className="mt-5 px-1 text-[11px] leading-5 text-muted-foreground">
-          {t('kanban.footer')}
-        </p>
+        <p className="mt-5 px-1 text-[11px] leading-5 text-muted-foreground">{t('kanban.footer')}</p>
     </FeaturePage>
   )
 }

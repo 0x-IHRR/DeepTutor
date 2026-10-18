@@ -89,7 +89,7 @@ export default function ChatHistorySection({
       // conversation came from, so losing them costs that line, never the
       // conversation.
       const [nextSessions, nextTopics, nextCollections] = await Promise.all([
-        listAllSessions({ force, allWorkspaces: true }),
+        listAllSessions({ force }),
         fetchMasteryTopicIndex().catch(() => [] as MasteryTopicLabel[]),
         fetchReadingCollectionIndex().catch(
           () => [] as ReadingCollectionLabel[],
@@ -130,7 +130,7 @@ export default function ChatHistorySection({
     let controller: AbortController | null = null;
     const timer = window.setTimeout(() => {
       controller = new AbortController();
-      searchAllSessions(term, controller.signal, { allWorkspaces: true })
+      searchAllSessions(term, controller.signal)
         .then((results) => {
           if (generation !== searchGenerationRef.current) return;
           setSearchResults(results);

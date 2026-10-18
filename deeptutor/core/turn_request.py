@@ -20,6 +20,7 @@ _LEGACY_RUNTIME_CONFIG_KEYS: dict[str, str] = {
     "subagent_consult_budget": "subagent_consult_budget",
     "consult_partner_id": "consult_partner_id",
     "partner_discussion_group_id": "partner_discussion_group_id",
+    "answer_by": "answer_by",
     "auto_route": "auto_route",
 }
 
@@ -196,6 +197,10 @@ class TurnRequest(BaseModel):
     subagent_consult_budget: int | None = Field(default=None, ge=0)
     consult_partner_id: str | None = None
     partner_discussion_group_id: str | None = None
+    # Who answers this turn when it is not DeepTutor: ``partner:<id>`` or
+    # ``subagent:<connection>``. The turn is handed over whole — see
+    # ``deeptutor.capabilities.handoff``.
+    answer_by: str | None = Field(default=None, pattern=r"^(partner|subagent):\S.*$")
     auto_route: bool | None = None
 
     @field_validator("reply_language_override")

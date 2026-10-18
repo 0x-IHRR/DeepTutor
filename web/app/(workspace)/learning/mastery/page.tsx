@@ -20,9 +20,8 @@ import { CreateTopicWizard } from "@/components/space/learning/CreateTopicWizard
 import type { Translate } from "@/components/space/learning/format";
 import { topicDisplayName } from "@/components/space/learning/format";
 import { TopicAtlas } from "@/components/space/learning/TopicAtlas";
-import { activeWorkspaceId } from "@/lib/workspace-scope";
 import { learningLibrary } from "@/lib/learning-library";
-import { useLearningCreation, requestedLearningCreation } from "@/components/learning/LibraryWorkspace";
+import { useCreateRequest, requestedLearningCreation } from "@/components/learning/create-request";
 import { type MasteryTopic } from "@/lib/learning-api";
 import {
   MASTERY_OPENING_SCOPE,
@@ -42,14 +41,13 @@ function MasteryPathRoute() {
   // Present when opened from a course page or a Course Study hand-off. It both
   // narrows the atlas to that course's paths and adopts whatever is built here.
   const scope = useCourseScope();
-  const creation = useLearningCreation(() => setWizardOpen(true));
+  useCreateRequest(() => setWizardOpen(true));
 
   const loadTopics = useCallback(async () => {
     setError(null);
     try {
       const result = await learningLibrary<MasteryTopic>("mastery");
       setTopics(result.items);
-      if (result.unavailable_workspaces.length) setError(t("Some workspaces could not be loaded. Available content is shown."));
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -71,12 +69,11 @@ function MasteryPathRoute() {
   const scopedTopics = useMemo(() => {
     if (!scope) return topics;
     const allowed = new Set(scope.refIds("mastery_path"));
-    return topics.filter((topic) => allowed.has(topic.path_id) && (topic.content_workspace_id ?? "") === activeWorkspaceId());
+    return topics.filter((topic) => allowed.has(topic.path_id));
   }, [scope, topics]);
 
   return (
     <>
-      {creation.dialog}
       <TopicAtlas
         topics={scopedTopics}
         loading={loading}
@@ -84,7 +81,7 @@ function MasteryPathRoute() {
         scopeChip={scope ? <CourseScopeChip scope={scope} /> : null}
         onCreate={(trigger) => {
           wizardTriggerRef.current = trigger;
-          creation.begin();
+          setWizardOpen(true);
         }}
         onRetry={() => {
           setLoading(true);

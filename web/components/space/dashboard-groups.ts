@@ -5,11 +5,13 @@
  */
 import {
   BookOpen,
+  Bookmark,
+  Bot,
   Brain,
   ClipboardList,
   Ear,
   History,
-  Bookmark,
+  NotebookPen,
   Plug,
   Terminal,
   UserRound,
@@ -24,10 +26,12 @@ import { listNotebooks, listNotebookEntries } from "@/lib/notebook-api";
 import { listPersonas } from "@/lib/personas-api";
 import { listKnowledgeBases } from "@/features/knowledge/api/catalog";
 import { listSkills } from "@/lib/skills-api";
+import { listSubagentConnections } from "@/lib/subagents-api";
 
 export type Lang = { zh: string; en: string };
 
 export type DashKey =
+  | "agents"
   | "knowledge"
   | "memory"
   | "chat_history"
@@ -108,9 +112,12 @@ export const DASHBOARD_GROUPS: DashboardGroup[] = [
       {
         key: "journal",
         href: "/space/journal",
-        icon: Bookmark,
+        icon: NotebookPen,
         title: { zh: "学习日志", en: "Learning journal" },
-        blurb: { zh: "查看当前目标、上次会话交接和已确认的学习记录。", en: "Inspect your mission, session handoff and confirmed records." },
+        blurb: {
+          zh: "查看当前目标、上次会话交接和已确认的学习记录。",
+          en: "Inspect your mission, session handoff and confirmed records.",
+        },
         tile: "bg-teal-500/10 text-teal-600 dark:text-teal-400",
       },
       {
@@ -142,8 +149,48 @@ export const DASHBOARD_GROUPS: DashboardGroup[] = [
     ],
   },
   {
+    label: { zh: "更多项目", en: "More Projects" },
+    items: [
+      {
+        key: "whisper",
+        href: "/whisper",
+        icon: Ear,
+        title: { zh: "密语", en: "Whisper" },
+        blurb: {
+          zh: "双席位咨询练习房间：督导只对受训者耳语。",
+          en: "Dual-seat practice room — the supervisor whispers to the trainee only.",
+        },
+        tile: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400",
+        credit: "alanguan73",
+        // Served by the out-of-tree psych-academy plugin, not by this repo.
+        requiresCapability: "whisper_visitor",
+      },
+    ],
+  },
+];
+
+/**
+ * Account-level: the agents, presets, playbooks, connectors and memory that
+ * travel with the learner into every workspace. The sidebar gives these their
+ * own shelf, apart from the workspace's materials above.
+ */
+export const PERSONALIZATION_GROUPS: DashboardGroup[] = [
+  {
     label: { zh: "个性化", en: "Personalization" },
     items: [
+      {
+        key: "agents",
+        href: "/agents",
+        icon: Bot,
+        title: { zh: "子智能体", en: "My Agents" },
+        blurb: {
+          zh: "连接本机或远程的智能体，在对话中随时请教。",
+          en: "Connect local or remote agents and consult them from any chat.",
+        },
+        unit: { zh: "个智能体", en: "agents" },
+        tile: "bg-slate-500/10 text-slate-600 dark:text-slate-300",
+        load: async () => (await listSubagentConnections()).length,
+      },
       {
         key: "personas",
         href: "/space/personas",
@@ -200,7 +247,7 @@ export const DASHBOARD_GROUPS: DashboardGroup[] = [
         // What this reader can actually use, not what the deployment installed:
         // an app they were not granted is visible on the page but is not theirs.
         load: async () =>
-          (await getCliApps()).apps.filter(app => app.granted && app.enabled)
+          (await getCliApps()).apps.filter((app) => app.granted && app.enabled)
             .length,
       },
       {
@@ -216,28 +263,12 @@ export const DASHBOARD_GROUPS: DashboardGroup[] = [
       },
     ],
   },
-  {
-    label: { zh: "更多项目", en: "More Projects" },
-    items: [
-      {
-        key: "whisper",
-        href: "/whisper",
-        icon: Ear,
-        title: { zh: "密语", en: "Whisper" },
-        blurb: {
-          zh: "双席位咨询练习房间：督导只对受训者耳语。",
-          en: "Dual-seat practice room — the supervisor whispers to the trainee only.",
-        },
-        tile: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400",
-        credit: "alanguan73",
-        // Served by the out-of-tree psych-academy plugin, not by this repo.
-        requiresCapability: "whisper_visitor",
-      },
-    ],
-  },
 ];
 
-export const ALL_ITEMS = DASHBOARD_GROUPS.flatMap(g => g.items);
+export const ALL_ITEMS = [
+  ...DASHBOARD_GROUPS,
+  ...PERSONALIZATION_GROUPS,
+].flatMap((g) => g.items);
 
 /**
  * The groups to render, given what the backend can actually serve.
@@ -250,16 +281,16 @@ export const ALL_ITEMS = DASHBOARD_GROUPS.flatMap(g => g.items);
  */
 export function visibleGroups(
   groups: DashboardGroup[],
-  isAvailable: ((name: string) => boolean) | null
+  isAvailable: ((name: string) => boolean) | null,
 ): DashboardGroup[] {
   return groups
-    .map(group => ({
+    .map((group) => ({
       ...group,
       items: group.items.filter(
-        item =>
+        (item) =>
           !item.requiresCapability ||
-          (isAvailable?.(item.requiresCapability) ?? false)
+          (isAvailable?.(item.requiresCapability) ?? false),
       ),
     }))
-    .filter(group => group.items.length > 0);
+    .filter((group) => group.items.length > 0);
 }

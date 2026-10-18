@@ -1,22 +1,17 @@
 'use client'
 
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { useTranslation } from 'react-i18next'
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspaceId'
 import { useChatWorkspaces } from '@/hooks/useChatWorkspaces'
 import { selectWorkspace } from '@/lib/workspace-scope'
-
-/** Switching lands on the section's index: a detail page belongs to the old workspace. */
-function switchDestination(pathname: string): string {
-  const section = pathname.split('/')[1]
-  return section ? `/${section}` : '/chat'
-}
+import { switchDestination } from '@/components/sidebar/page-sections'
 
 /** The workspace this URL is scoped to, the ones it can switch to, and the switch. */
 export function useWorkspaceChoices() {
   const { t } = useTranslation()
   const pathname = usePathname() ?? '/'
-  const query = useSearchParams()
-  const active = query.get('dt_workspace') ?? query.get('workspace') ?? ''
+  const active = useActiveWorkspaceId()
   const { workspaces } = useChatWorkspaces()
   const current = workspaces.find(row => row.workspace_id === active)
   const currentName = active ? (current?.display_name ?? t('Workspace unavailable')) : t('General workspace')

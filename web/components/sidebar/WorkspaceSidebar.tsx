@@ -1,9 +1,8 @@
 "use client";
 
-import { navigateTask, selectWorkspace } from "@/lib/workspace-scope";
+import { activeWorkspaceId, navigateTask } from "@/lib/workspace-scope";
 import { sessionWorkspaceId } from "@/lib/session-api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { workspaceChatHref } from "@/lib/workspaces-api";
 
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
@@ -59,12 +58,12 @@ export default function WorkspaceSidebar() {
       setLoadingSessions(true);
     }
     try {
-      // Topic labels are only there to name a group heading, so a failure to
-      // load them must not cost the session list: the conversations then read
-      // as ungrouped rather than as missing.
+      // Only this workspace's conversations: switching workspace is switching
+      // stores. Topic labels only name a group heading, so a failure to load
+      // them must not cost the session list.
       const [nextSessions, nextCourses, nextTopics, nextCollections] =
         await Promise.all([
-          listAllSessions({ force: true, allWorkspaces: true }),
+          listAllSessions({ force: true }),
           listCourses({ force: true }).catch(() => [] as StudyCourse[]),
           fetchMasteryTopicIndex().catch(() => [] as MasteryTopicLabel[]),
           fetchReadingCollectionIndex().catch(() => [] as ReadingCollectionLabel[]),
@@ -148,7 +147,7 @@ export default function WorkspaceSidebar() {
   // sessions whose status is `running`, which is the architecture stating
   // outright that background conversations are meant to keep going.
   const handleNewChat = useCallback(() => {
-    newSession({ workspaceId: null });
+    newSession({ workspaceId: activeWorkspaceId() || null });
     navigateTask("/chat", router.push);
   }, [newSession, router]);
 
@@ -191,7 +190,7 @@ export default function WorkspaceSidebar() {
       );
       if (selectedSessionId === sessionId) {
         cancelStreamingTurn();
-        newSession({ workspaceId: null });
+        newSession({ workspaceId: activeWorkspaceId() || null });
         // A reading conversation was open beside its material; deleting it
         // should leave the reader on that material, not throw them to /chat.
         const readingId = deleted ? readingWorkspaceIdOf(deleted) : "";
@@ -216,17 +215,17 @@ export default function WorkspaceSidebar() {
             preferences: updated.preferences, content_workspace_id: updated.preferences?.workspace_id || "" }), router.push);
         }
       }
+      // A conversation moved to another workspace has left this list.
+      const movedAway = "workspace_id" in patch &&
+        (updated.preferences?.workspace_id || "") !== activeWorkspaceId();
       setSessions((previous) =>
-        previous.map((session) =>
-          session.session_id === sessionId
-            ? {
-                ...session,
-                updated_at: updated.updated_at,
-                preferences: updated.preferences,
-                content_workspace_id: "workspace_id" in patch ? updated.preferences?.workspace_id || "" : session.content_workspace_id,
-              }
-            : session,
-        ),
+        movedAway
+          ? previous.filter((session) => session.session_id !== sessionId)
+          : previous.map((session) =>
+              session.session_id === sessionId
+                ? { ...session, updated_at: updated.updated_at, preferences: updated.preferences }
+                : session,
+            ),
       );
     },
     [configureSession, sessions, selectedSessionId, router],
@@ -243,8 +242,6 @@ export default function WorkspaceSidebar() {
       activeSessionId={selectedSessionId}
       loadingSessions={loadingSessions}
       onNewChat={handleNewChat}
-      workspaceRefreshToken={sidebarRefreshToken}
-      onNewWorkspaceChat={(workspaceId) => { void selectWorkspace(workspaceId, workspaceChatHref(workspaceId)); }}
       onSelectSession={handleSelectSession}
       onRenameSession={handleRenameSession}
       onDeleteSession={handleDeleteSession}

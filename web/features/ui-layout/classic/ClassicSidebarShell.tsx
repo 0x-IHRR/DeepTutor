@@ -70,8 +70,6 @@ export interface SidebarShellProps {
   showSessions?: boolean;
   /** Clicking the Chat nav item resets to a fresh session via this handler. */
   onNewChat?: () => void;
-  onNewWorkspaceChat?: (workspaceId: string) => void;
-  workspaceRefreshToken?: number;
   onSelectSession?: (sessionId: string) => void | Promise<void>;
   onRenameSession?: (sessionId: string, title: string) => void | Promise<void>;
   onDeleteSession?: (sessionId: string) => void | Promise<void>;
@@ -99,7 +97,6 @@ export function ClassicSidebarShell({
   loadingSessions = false,
   showSessions = false,
   onNewChat,
-  onNewWorkspaceChat,
   onSelectSession,
   onRenameSession,
   onDeleteSession,
@@ -327,8 +324,6 @@ export function ClassicSidebarShell({
                 // course data callers still fetch.
                 courses={[]}
                 workspaces={workspaces}
-                groupWorkspaces
-                onNewWorkspaceChat={onNewWorkspaceChat}
                 masteryTopics={masteryTopics}
                 readingCollections={readingCollections}
                 activeSessionId={activeSessionId}

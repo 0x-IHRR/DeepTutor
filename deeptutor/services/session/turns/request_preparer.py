@@ -80,8 +80,29 @@ _REPLAY_SNAPSHOT_FIELDS: dict[str, str] = {
     "timed_media_id": "timedMediaId",
     "consult_partner_id": "consultPartnerId",
     "partner_discussion_group_id": "partnerDiscussionGroupId",
+    "answer_by": "answerBy",
     "auto_route": "autoRoute",
 }
+
+# What a reopened Little Tutor thread needs to pin its passage again. Kept
+# short because preferences ride along with every session-list row; a prefix
+# of the selection still grounds against its source message.
+TUTOR_THREAD_SELECTION_MAX_CHARS = 2_000
+
+
+def _tutor_thread_preferences(context: dict[str, Any]) -> dict[str, Any]:
+    if context.get("scope") == "conversation":
+        return {"tutor_scope": "conversation"}
+    preferences: dict[str, Any] = {
+        "tutor_scope": "selection",
+        "tutor_selected_text": str(context.get("selected_text") or "")[
+            :TUTOR_THREAD_SELECTION_MAX_CHARS
+        ],
+    }
+    source_message_id = context.get("source_message_id")
+    if isinstance(source_message_id, int) and source_message_id > 0:
+        preferences["tutor_source_message_id"] = source_message_id
+    return preferences
 
 
 class TurnRequestPreparer:
@@ -631,6 +652,9 @@ class TurnRequestPreparer:
             "tools": list(payload.get("tools") or []),
             "knowledge_bases": list(payload.get("knowledge_bases") or []),
             "language": str(payload.get("language") or "en"),
+            # Who this conversation is handed to; "" when DeepTutor answers.
+            # The client restates it every turn, so the last one is current.
+            "answer_by": str(payload.get("answer_by") or ""),
         }
         if payload.get("capability_once"):
             # One turn in another mode; the conversation keeps its own.
@@ -653,14 +677,23 @@ class TurnRequestPreparer:
                 {"selection_tutor_context": dict(raw_selection_context)}
             )
             if selection_tutor_context is None:
-                raise RuntimeError("Selection tutor context requires selected text")
+                raise RuntimeError(
+                    "A Little Tutor thread needs selected text or the conversation it is about"
+                )
             try:
-                selection_tutor_context = await _resolve_selection_tutor_context(
+                resolved_selection_context = await _resolve_selection_tutor_context(
                     self.store,
                     selection_tutor_context,
                 )
             except ValueError as exc:
                 raise RuntimeError(str(exc)) from exc
+            # The executor resolves again when the turn runs; a side chat's
+            # transcript is that resolution's output, not part of the request.
+            selection_tutor_context = {
+                key: value
+                for key, value in resolved_selection_context.items()
+                if key != "conversation_messages"
+            }
             payload["selection_tutor_context"] = selection_tutor_context
             parent_session_id = str(selection_tutor_context.get("parent_session_id") or "").strip()
             if parent_session_id == session["id"]:
@@ -697,6 +730,7 @@ class TurnRequestPreparer:
                         "parent_session_id": parent_session_id,
                         "session_kind": "selection_tutor",
                         "course_id": str(parent_preferences.get("course_id") or ""),
+                        **_tutor_thread_preferences(selection_tutor_context),
                     }
                 )
         if llm_selection:
@@ -1008,6 +1042,7 @@ class TurnRequestPreparer:
         for field, snapshot_key in (
             ("consult_partner_id", "consultPartnerId"),
             ("partner_discussion_group_id", "partnerDiscussionGroupId"),
+            ("answer_by", "answerBy"),
         ):
             consultation_fields[field] = (
                 overrides[field]

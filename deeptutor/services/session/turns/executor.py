@@ -933,6 +933,7 @@ class TurnExecutor:
                     subagent_consult_budget=payload.get("subagent_consult_budget"),
                     consult_partner_id=payload.get("consult_partner_id"),
                     partner_discussion_group_id=payload.get("partner_discussion_group_id"),
+                    answer_by=payload.get("answer_by"),
                     workspace=get_content_workspace_service().create_runtime_context(
                         capability=capability_name,
                         session_id=session_id,
@@ -1037,7 +1038,7 @@ class TurnExecutor:
                     # reloaded turn lays the answer out the way it streamed,
                     # and so future context can replay assistant -> user ->
                     # assistant in order.
-                    _stamp_content_offset(payload_event, _persisted_answer())
+                    _stamp_content_offset(payload_event, _persisted_answer)
                     assistant_events.append(payload_event)
                 if _should_capture_assistant_content(event):
                     call_id = (event.metadata or {}).get("call_id")
@@ -1435,9 +1436,8 @@ class TurnExecutor:
             if execution.lease is not None and self.coordinator is not None:
                 with contextlib.suppress(Exception):
                     await self.coordinator.release_turn(execution.lease)
-            # A turn may have parsed large attachments or built substantial
-            # temporary prompts/results. Reclaim after this coroutine returns,
-            # outside the user-visible streaming path.
-            from deeptutor.runtime.memory_reclaim import schedule_memory_reclaim
-
-            schedule_memory_reclaim()
+            # Release turn-owned references here and let Python's generational
+            # GC manage ordinary chat allocations. A full gc.collect() in a
+            # worker thread still holds the GIL and delays this turn's DONE
+            # frame and unrelated streams. Allocation-heavy workers retain
+            # their explicit memory-reclamation boundary.

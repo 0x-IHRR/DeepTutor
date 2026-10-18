@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +42,6 @@ from deeptutor.agents._shared.tool_runtime import (
     bind_workspace_tool_runtime,
     drop_unconfigured_generation_tools,
 )
-from deeptutor.agents.loop.agent_loop import AgentLoop
 from deeptutor.agents.loop.context_budget import LLMRequestSnapshot, build_context_budget
 from deeptutor.agents.loop.prompt_blocks import LoopPromptAssembler
 from deeptutor.capabilities import (
@@ -419,6 +419,20 @@ class AgenticLoopPipeline:
             prior = (context.runtime.previous_model_turn or {}).get("tools") or []
             order = {item["function"]["name"]: i for i, item in enumerate(prior)}
             tool_schemas.sort(key=lambda item: order.get(item["function"]["name"], len(order)))
+
+        from deeptutor.runtime.ts_engine.config import compatibility_reason
+
+        if os.getenv("DEEPTUTOR_CHAT_ENGINE") == "typescript-native" and not compatibility_reason(
+            self.llm_config
+        ):
+            from deeptutor.agents.loop.native_adapter import run_native_turn
+
+            self.last_result = await run_native_turn(
+                self, context, stream, enabled_tools if use_native_tools else [], tool_schemas or []
+            )
+            return self.last_result
+
+        from deeptutor.agents.loop.agent_loop import AgentLoop
 
         loop = AgentLoop(
             pipeline=self,
@@ -1048,7 +1062,9 @@ class AgenticLoopPipeline:
         if not choices:
             return ""
         capped = choices[:30]
-        lines = ["[用户的收藏夹列表]" if self.language == "zh" else "[User's favorites collections]"]
+        lines = [
+            "[用户的收藏夹列表]" if self.language == "zh" else "[User's favorites collections]"
+        ]
         for entry in capped:
             nid = entry.get("id", "")
             name = entry.get("name", nid)
@@ -1392,6 +1408,7 @@ class AgenticLoopPipeline:
                 }
             else:
                 from deeptutor.multi_user.context import get_current_user
+                from deeptutor.services.workspace.context import current_workspace_id
 
                 user = get_current_user()
                 kwargs["_cron_owner"] = {
@@ -1399,6 +1416,7 @@ class AgenticLoopPipeline:
                     "user_id": user.id,
                     "is_admin": user.is_admin,
                     "session_id": context.session_id,
+                    "workspace_id": current_workspace_id(),
                     "language": context.language or "en",
                 }
         elif tool_name in {"reason", "brainstorm"}:

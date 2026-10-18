@@ -34,7 +34,6 @@ import {
   Sparkles,
   Square,
   UserRound,
-  Users,
   Wand2,
   X,
 } from "lucide-react";
@@ -44,9 +43,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { CoursePill } from "@/components/chat/home/CoursePill";
-import { WorkspacePill } from "@/components/workspaces/WorkspacePill";
 import type { StudyCourse } from "@/lib/courses-api";
-import type { ChatWorkspaceRegistration } from "@/lib/workspaces-api";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import type { SelectedRecord } from "@/lib/notebook-selection-types";
@@ -56,10 +53,7 @@ import ChatSpaceMenu from "@/components/chat/space/ChatSpaceMenu";
 import type { SpaceMemoryFile } from "@/lib/space-items";
 import type { SelectedBookReference } from "@/lib/book-references";
 import type { SelectedReadingReference } from "@/lib/reading-references";
-import AgentSelector from "./AgentSelector";
-import PartnerSelector from "./PartnerSelector";
-import { listPartners, type PartnerInfo } from "@/lib/partners-api";
-import PartnerGroupSelector from "./PartnerGroupSelector";
+import { usePartnerRoster } from "@/hooks/usePartnerRoster";
 import { listPartnerGroups, type PartnerGroup } from "@/lib/partner-groups-api";
 import ContextBudgetChip, { type ContextBudget } from "./ContextBudgetChip";
 import { RailSlot } from "@/components/chat/home/ComposerRail";
@@ -69,8 +63,9 @@ import ComposerResources, {
 import KnowledgeSelector from "./KnowledgeSelector";
 import ModelSelector from "./ModelSelector";
 import styles from "./ChatComposer.module.css";
-import PersonaSelector from "./PersonaSelector";
-import ResourceSelector from "./ResourceSelector";
+import { ComposerTray } from "./ComposerTray";
+import type { AnswerModeProps, PartnerLinkProps } from "./AnswerModeMenu";
+import type { LeadToken } from "./ComposerLead";
 import type { ComposerResourceCatalog } from "@/hooks/useComposerResources";
 import type { ResourceSelection } from "@/features/chat/ChatStateAdapter";
 
@@ -211,11 +206,7 @@ export default memo(function ChatComposer({
   courses = [],
   courseId = "",
   onSelectCourse,
-  workspaces = [],
   workspaceId = "",
-  onSelectWorkspace,
-  workspaceError = "",
-  workspacePending = false,
   spaceMenuOpen,
   hasMessages,
   attachments,
@@ -228,6 +219,8 @@ export default memo(function ChatComposer({
   onSelectPartner,
   selectedPartnerGroup = null,
   onSelectPartnerGroup,
+  answerBy = null,
+  onAnswerByChange,
   selectedAgent = null,
   onSelectAgent,
   subagentBudget = null,
@@ -324,13 +317,9 @@ export default memo(function ChatComposer({
   courses?: StudyCourse[];
   courseId?: string;
   onSelectCourse?: (courseId: string) => void;
-  /* Workspace binding. Same shape as the course binding above, and absent for
-     the same reason on composers that live inside one surface already. */
-  workspaces?: ChatWorkspaceRegistration[];
+  /* The conversation's workspace, for task links. Choosing it is the
+     shell's job (the sidebar and the location chip), not the composer's. */
   workspaceId?: string;
-  onSelectWorkspace?: (workspaceId: string) => void;
-  workspaceError?: string;
-  workspacePending?: boolean;
   spaceMenuOpen: boolean;
   hasMessages: boolean;
   attachments: PendingAttachment[];
@@ -345,6 +334,9 @@ export default memo(function ChatComposer({
   onSelectPartner?: (id: string | null) => void;
   selectedPartnerGroup?: string | null;
   onSelectPartnerGroup?: (id: string | null) => void;
+  /** Who answers instead of DeepTutor: `partner:<id>`, `subagent:<name>`, or null. */
+  answerBy?: string | null;
+  onAnswerByChange?: (value: string | null) => void;
   selectedAgent?: string | null;
   onSelectAgent?: (name: string | null) => void;
   /** Max times DeepTutor may consult the selected agent this turn. */
@@ -409,9 +401,9 @@ export default memo(function ChatComposer({
   onClearPersona: () => void;
   /**
    * Session-persona wiring (main chat only). When `onPersonaSelectionChange`
-   * is provided, the toolbar shows a PersonaSelector chip and the composer
-   * accepts `/persona`. The quiz follow-up surface omits these and keeps its
-   * per-turn persona picker flow.
+   * is provided, the tray's answer list offers response styles and the
+   * composer accepts `/persona`, which opens that list. The quiz follow-up
+   * surface omits these and keeps its per-turn persona picker flow.
    */
   personaSelection?: string;
   onPersonaSelectionChange?: (persona: string) => void;
@@ -479,25 +471,13 @@ export default memo(function ChatComposer({
 }) {
   const { t } = useTranslation();
   const capabilityLabel = useCapabilityLabel();
-  const [partners, setPartners] = useState<PartnerInfo[]>([]);
-  const [partnersLoading, setPartnersLoading] = useState(false);
-  const [partnerLoadError, setPartnerLoadError] = useState(false);
-  const canSelectPartner = Boolean(onSelectPartner);
+  const canSelectPartner = Boolean(onSelectPartner || onAnswerByChange);
   const canSelectGroup = Boolean(onSelectPartnerGroup);
-  useEffect(() => {
-    if (!canSelectPartner) return;
-    let active = true;
-    const refresh = () => {
-      setPartnersLoading(true);
-      void listPartners().then(value => {
-        if (active) { setPartners(value); setPartnerLoadError(false); }
-      }).catch(() => { if (active) setPartnerLoadError(true); })
-        .finally(() => { if (active) setPartnersLoading(false); });
-    };
-    refresh();
-    window.addEventListener("focus", refresh);
-    return () => { active = false; window.removeEventListener("focus", refresh); };
-  }, [canSelectPartner]);
+  const {
+    partners,
+    loading: partnersLoading,
+    error: partnerLoadError,
+  } = usePartnerRoster(canSelectPartner);
   const partnerName = partners.find(partner => partner.partner_id === selectedPartner)?.name || selectedPartner;
   const [partnerGroups, setPartnerGroups] = useState<PartnerGroup[]>([]);
   const [groupLoadError, setGroupLoadError] = useState(false);
@@ -789,13 +769,6 @@ export default memo(function ChatComposer({
   const contextTreeItems: ContextTreeItem[] = [
     ...attachments.map((file, index): ContextTreeItem => ({key:`file-${index}`, icon:Paperclip, kind:t("Attach files"),label:file.filename,thumbnailUrl:file.type === "image" ? file.previewUrl : undefined,onClick:()=>onPreviewAttachment?.(index),onRemove:()=>onRemoveAttachment(index)})),
     ...selectedKnowledgeBases.map((id): ContextTreeItem => ({key:`kb-${id}`,icon:Database,kind:t("Knowledge"),label:knowledgeBases.find(kb=>knowledgeBaseRef(kb)===id)?.name || id,onRemove:()=>onToggleKB(id)})),
-    ...(personaSelection ? [{key:"persona-scope",icon:UserRound,kind:t("Response style"),label:personaSelection,onRemove:()=>onPersonaSelectionChange?.("")}] : []),
-    ...(selectedPartner ? [{ key: "partner-current", icon: UserRound, kind: t("Ask partner"), label: partnerName!, onRemove: () => onSelectPartner?.(null) }] : []),
-    ...(selectedPartnerGroup ? [{ key: "partner-group-current", icon: Users, kind: t("Organize partner discussion"), label: partnerGroupName!, onRemove: () => onSelectPartnerGroup?.(null) }] : []),
-    ...(selectedAgent ? [{key:"collaborator-current",icon:Bot,kind:t("Ask subagent"),label:selectedAgent,onRemove:()=>onSelectAgent?.(null)}] : []),
-    ...(resourceSelection?.skills || []).map((id): ContextTreeItem=>({key:`skill-${id}`,icon:Wand2,kind:t("Skills"),label:resourceCatalog?.skills.find(option=>option.id===id)?.name || id,onRemove:()=>onResourceSelectionChange?.({...resourceSelection!,skills:resourceSelection!.skills.filter(value=>value!==id)})})),
-    ...(resourceSelection?.mcp || []).map((id): ContextTreeItem=>({key:`mcp-${id}`,icon:Plug,kind:t("MCP"),label:resourceCatalog?.mcp.find(option=>option.id===id)?.name || id,onRemove:()=>onResourceSelectionChange?.({...resourceSelection!,mcp:resourceSelection!.mcp.filter(value=>value!==id)})})),
-
     ...selectedBookReferences.map((book): ContextTreeItem => ({
       key: `book-${book.bookId}`,
       icon: BookOpen,
@@ -860,6 +833,91 @@ export default memo(function ChatComposer({
     })),
   ];
 
+  // Skills and connectors from the tray open the message itself instead of
+  // joining the attachments: they say how to answer, not what to read.
+  const leadTokens: LeadToken[] =
+    resourceSelection && onResourceSelectionChange
+      ? [
+          ...resourceSelection.skills.map((id): LeadToken => ({
+            key: `skill:${id}`,
+            icon: Wand2,
+            kind: t("Skills"),
+            label: resourceCatalog?.skills.find((option) => option.id === id)?.name || id,
+            onRemove: () =>
+              onResourceSelectionChange({
+                ...resourceSelection,
+                skills: resourceSelection.skills.filter((value) => value !== id),
+              }),
+          })),
+          ...resourceSelection.mcp.map((id): LeadToken => ({
+            key: `mcp:${id}`,
+            icon: Plug,
+            kind: t("composer.tray.connectors"),
+            label: resourceCatalog?.mcp.find((option) => option.id === id)?.name || id,
+            onRemove: () =>
+              onResourceSelectionChange({
+                ...resourceSelection,
+                mcp: resourceSelection.mcp.filter((value) => value !== id),
+              }),
+          })),
+        ]
+      : [];
+  const answerMode: AnswerModeProps | undefined =
+    onPersonaSelectionChange || onAnswerByChange
+      ? {
+          persona: onPersonaSelectionChange
+            ? { value: personaSelection ?? "", onChange: onPersonaSelectionChange }
+            : undefined,
+          answerers: onAnswerByChange
+            ? {
+                value: answerBy,
+                onChange: onAnswerByChange,
+                partners,
+                agents: connectedAgents,
+                loading: partnersLoading,
+                error: partnerLoadError,
+              }
+            : undefined,
+          // `/persona` opens this list; only when the parent can hear it close.
+          open: onPersonaSelectorOpenChange ? Boolean(personaSelectorOpen) : undefined,
+          onOpenChange: onPersonaSelectorOpenChange,
+        }
+      : undefined;
+  // Working with partners: DeepTutor still answers, having asked them first.
+  const partnerLinks: PartnerLinkProps | undefined =
+    onSelectAgent || onSelectPartner || onSelectPartnerGroup
+      ? {
+          agents:
+            onSelectAgent && connectedAgents.length
+              ? {
+                  options: connectedAgents,
+                  selected: selectedAgent,
+                  onSelect: onSelectAgent,
+                  budget: subagentBudget,
+                  onBudgetChange: onSubagentBudgetChange,
+                }
+              : undefined,
+          partners: onSelectPartner
+            ? {
+                options: partners,
+                selected: selectedPartner,
+                onSelect: onSelectPartner,
+                loading: partnersLoading,
+                error: partnerLoadError,
+              }
+            : undefined,
+          groups: onSelectPartnerGroup
+            ? {
+                options: partnerGroups,
+                selected: selectedPartnerGroup,
+                onSelect: onSelectPartnerGroup,
+                loading: groupsLoading,
+                error: groupLoadError,
+              }
+            : undefined,
+        }
+      : undefined;
+
   const handleManualSend = useCallback(() => {
     if (isConfigBlocked) {
       // Don't silently fail — surface the config card so the user knows
@@ -893,24 +951,8 @@ export default memo(function ChatComposer({
       ? t("Confirm settings on the right to send.")
       : sendLabel;
 
-  const toggleResource = useCallback(
-    (kind: "skills" | "mcp", id: string) => {
-      if (!onResourceSelectionChange) return;
-      const current = resourceSelection ?? { skills: [], mcp: [] };
-      const list = current[kind];
-      onResourceSelectionChange({
-        ...current,
-        [kind]: list.includes(id)
-          ? list.filter((value) => value !== id)
-          : [...list, id],
-      });
-    },
-    [onResourceSelectionChange, resourceSelection],
-  );
-
-  // Available selectors share one resource panel; omitted catalogs stay hidden.
-  const selectedSkills = resourceSelection?.skills ?? [];
-  const selectedMcp = resourceSelection?.mcp ?? [];
+  // The panel holds materials only; skills, connectors and how to answer live
+  // in the tray under the box. Omitted catalogs stay hidden.
   const resourceItems: ComposerResourceItem[] = [];
   if (taskSessionId || onDraftTaskIdsChange) {
     resourceItems.push({
@@ -958,117 +1000,6 @@ export default memo(function ChatComposer({
       ),
     });
   }
-  if (onPersonaSelectionChange) {
-    resourceItems.push({
-      key: "persona",
-      group: "Answer preferences",
-      summary: personaSelection || t("Default"),
-      onClear: () => onPersonaSelectionChange(""),
-      label: t("Response style"),
-      icon: UserRound,
-      count: personaSelection ? 1 : 0,
-      node: (
-        <PersonaSelector
-          value={personaSelection ?? ""}
-          onChange={onPersonaSelectionChange}
-          embedded
-        />
-      ),
-    });
-  }
-  if (onResourceSelectionChange && (resourceCatalog?.skills.length ?? 0) > 0) {
-    resourceItems.push({
-      key: "skills",
-      group: "Tools",
-      summary: selectedSkills.length
-        ? `${selectedSkills.length} ${t("selected")}`
-        : t("Workspace default"),
-      resetLabel: t("Use workspace default"),
-      onClear: () =>
-        onResourceSelectionChange({ skills: [], mcp: selectedMcp }),
-      label: t("Skills"),
-      icon: Wand2,
-      count: selectedSkills.length,
-      node: (
-        <ResourceSelector
-          kind="skills"
-          options={resourceCatalog?.skills ?? []}
-          selected={selectedSkills}
-          onToggle={(id) => toggleResource("skills", id)}
-          embedded
-        />
-      ),
-    });
-  }
-  if (onResourceSelectionChange && (resourceCatalog?.mcp.length ?? 0) > 0) {
-    resourceItems.push({
-      key: "mcp",
-      group: "Tools",
-      summary: selectedMcp.length
-        ? `${selectedMcp.length} ${t("selected")}`
-        : t("Workspace default"),
-      resetLabel: t("Use workspace default"),
-      onClear: () =>
-        onResourceSelectionChange({ skills: selectedSkills, mcp: [] }),
-      label: t("MCP"),
-      icon: Plug,
-      count: selectedMcp.length,
-      node: (
-        <ResourceSelector
-          kind="mcp"
-          options={resourceCatalog?.mcp ?? []}
-          selected={selectedMcp}
-          onToggle={(id) => toggleResource("mcp", id)}
-          embedded
-        />
-      ),
-    });
-  }
-
-  if (onSelectAgent) {
-    resourceItems.push({
-      key: "agent",
-      group: "Answer preferences",
-      summary: selectedAgent || t("None"),
-      onClear: () => onSelectAgent(null),
-      label: t("Ask subagent"),
-      icon: Bot,
-      count: selectedAgent ? 1 : 0,
-      node: (
-        <AgentSelector
-          agents={connectedAgents}
-          selected={selectedAgent}
-          onSelect={onSelectAgent}
-          budget={subagentBudget}
-          onBudgetChange={onSubagentBudgetChange}
-          embedded
-        />
-      ),
-    });
-  }
-
-  if (onSelectPartner) {
-    resourceItems.push({
-      key: "partner", group: "Answer preferences",
-      summary: partnerName || t("None"), onClear: () => onSelectPartner(null),
-      label: t("Ask partner"), icon: UserRound, count: selectedPartner ? 1 : 0,
-      node: <PartnerSelector partners={partners} selected={selectedPartner} onSelect={onSelectPartner}
-        loading={partnersLoading} error={partnerLoadError} />,
-    });
-  }
-
-  if (onSelectPartnerGroup) {
-    resourceItems.push({
-      key: "partner_group", group: "Answer preferences",
-      summary: partnerGroupName || t("None"),
-      onClear: () => onSelectPartnerGroup(null),
-      label: t("Organize partner discussion"), icon: Users,
-      count: selectedPartnerGroup ? 1 : 0,
-      node: <PartnerGroupSelector groups={partnerGroups} selected={selectedPartnerGroup}
-        onSelect={onSelectPartnerGroup} error={groupLoadError} loading={groupsLoading} />,
-    });
-  }
-
 
   return (
     <div
@@ -1162,6 +1093,7 @@ export default memo(function ChatComposer({
             placeholder={inputPlaceholder}
             placeholderCompletion={inputPlaceholderCompletion}
             minHeight={hasMessages ? 28 : 64}
+            lead={leadTokens}
           />
 
           {attachmentError && (
@@ -1182,6 +1114,43 @@ export default memo(function ChatComposer({
           <div className="px-3 pb-2 pt-0.5">
             <div className={styles.toolbar}>
               <div className={styles.context}>
+                {
+                  <ComposerResources
+                    selectedCount={contextTreeItems.length}
+                    items={resourceItems}
+                    open={spaceMenuOpen}
+                    onOpenChange={onSetSpaceMenuOpen}
+                    onBack={() => {}}
+                    triggerRef={spaceBtnRef}
+                    panelRef={spaceMenuRef}
+                    materials={(query) => (
+                      <ChatSpaceMenu
+                        variant="resources"
+                        query={query}
+                        selectedCounts={spaceSelectionCounts}
+                        knowledgeAvailable={false}
+                        personaAvailable={!onPersonaSelectionChange}
+                        agentsAvailable={agentsAvailable}
+                        readingAvailable={Boolean(onSelectReadingPicker)}
+                        onSelectItem={(key) => {
+                          onSetSpaceMenuOpen(false);
+                          if (key === "attach") handlePickFiles();
+                          else if (key === "chat_history")
+                            onSelectHistoryPicker();
+                          else if (key === "my_agents") onSelectAgentsPicker();
+                          else if (key === "books") onSelectBookPicker();
+                          else if (key === "reading") onSelectReadingPicker?.();
+                          else if (key === "notebooks") onSelectNotebookPicker();
+                          else if (key === "question_bank")
+                            onSelectQuestionBankPicker();
+                          else if (key === "persona") onSelectPersonaPicker();
+                          else if (key === "memory") onSelectMemoryPicker();
+                        }}
+                      />
+                    )}
+                  />
+                }
+
                 {showCapabilityChip && (
                   <div className="relative min-w-0 max-w-full">
                     <Tooltip label={capabilityLabel(activeCap)} suppressed={capMenuOpen} side="top">
@@ -1307,17 +1276,6 @@ export default memo(function ChatComposer({
                   </div>
                 )}
 
-                {onSelectWorkspace ? (
-                  <WorkspacePill
-                    collapsible
-                    workspaces={workspaces}
-                    workspaceId={workspaceId}
-                    onSelect={onSelectWorkspace}
-                    disabled={isStreaming || workspacePending}
-                    readOnly={hasMessages}
-                    error={workspaceError}
-                  />
-                ) : null}
 
                 {onSelectCourse ? (
                   <RailSlot
@@ -1333,52 +1291,6 @@ export default memo(function ChatComposer({
                   </RailSlot>
                 ) : null}
 
-                {
-                  <ComposerResources
-                    selectedCount={contextTreeItems.length}
-                    items={resourceItems}
-                    open={spaceMenuOpen || Boolean(personaSelectorOpen)}
-                    onOpenChange={(open) => {
-                      onSetSpaceMenuOpen(open);
-                      if (!open) onPersonaSelectorOpenChange?.(false);
-                    }}
-                    requestedKey={personaSelectorOpen ? "persona" : undefined}
-                    onBack={() => {
-                      if (personaSelectorOpen) {
-                        onSetSpaceMenuOpen(true);
-                        onPersonaSelectorOpenChange?.(false);
-                      }
-                    }}
-                    triggerRef={spaceBtnRef}
-                    panelRef={spaceMenuRef}
-                    materials={(query) => (
-                      <ChatSpaceMenu
-                        variant="resources"
-                        query={query}
-                        selectedCounts={spaceSelectionCounts}
-                        knowledgeAvailable={false}
-                        personaAvailable={!onPersonaSelectionChange}
-                        agentsAvailable={agentsAvailable}
-                        readingAvailable={Boolean(onSelectReadingPicker)}
-                        onSelectItem={(key) => {
-                          onSetSpaceMenuOpen(false);
-                          onPersonaSelectorOpenChange?.(false);
-                          if (key === "attach") handlePickFiles();
-                          else if (key === "chat_history")
-                            onSelectHistoryPicker();
-                          else if (key === "my_agents") onSelectAgentsPicker();
-                          else if (key === "books") onSelectBookPicker();
-                          else if (key === "reading") onSelectReadingPicker?.();
-                          else if (key === "notebooks") onSelectNotebookPicker();
-                          else if (key === "question_bank")
-                            onSelectQuestionBankPicker();
-                          else if (key === "persona") onSelectPersonaPicker();
-                          else if (key === "memory") onSelectMemoryPicker();
-                        }}
-                      />
-                    )}
-                  />
-                }
 
               </div>
 
@@ -1470,6 +1382,18 @@ export default memo(function ChatComposer({
             </div>
           </div>
         </div>
+        {(resourceCatalog && resourceSelection && onResourceSelectionChange) || answerMode || partnerLinks ? (
+          <ComposerTray
+            placement={hasMessages ? "up" : "down"}
+            resources={
+              resourceCatalog && resourceSelection && onResourceSelectionChange
+                ? { catalog: resourceCatalog, selection: resourceSelection, onChange: onResourceSelectionChange }
+                : undefined
+            }
+            partners={partnerLinks}
+            answer={answerMode}
+          />
+        ) : null}
       </div>
     </div>
   );

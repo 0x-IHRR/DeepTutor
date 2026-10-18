@@ -1,6 +1,6 @@
 "use client";
 
-import { navigateTask } from "@/lib/workspace-scope";
+import { activeWorkspaceId, navigateTask } from "@/lib/workspace-scope";
 import { sessionWorkspaceId } from "@/lib/session-api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -51,7 +51,7 @@ export default function UtilitySidebar() {
       // Labels only name a heading, so losing them costs grouping, not the list.
       const [nextSessions, nextCourses, nextTopics, nextCollections] =
         await Promise.all([
-          listAllSessions({ force: true, allWorkspaces: true }),
+          listAllSessions({ force: true }),
           listCourses({ force: true }).catch(() => [] as StudyCourse[]),
           fetchMasteryTopicIndex().catch(() => [] as MasteryTopicLabel[]),
           fetchReadingCollectionIndex().catch(() => [] as ReadingCollectionLabel[]),
@@ -126,17 +126,17 @@ export default function UtilitySidebar() {
   const handleOrganizeSession = useCallback(
     async (sessionId: string, patch: SessionOrganizationPatch) => {
       const updated = await updateSessionOrganization(sessionId, patch, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
+      // A conversation moved to another workspace has left this list.
+      const movedAway = "workspace_id" in patch &&
+        (updated.preferences?.workspace_id || "") !== activeWorkspaceId();
       setSessions((previous) =>
-        previous.map((session) =>
-          session.session_id === sessionId
-            ? {
-                ...session,
-                updated_at: updated.updated_at,
-                preferences: updated.preferences,
-                content_workspace_id: "workspace_id" in patch ? updated.preferences?.workspace_id || "" : session.content_workspace_id,
-              }
-            : session,
-        ),
+        movedAway
+          ? previous.filter((session) => session.session_id !== sessionId)
+          : previous.map((session) =>
+              session.session_id === sessionId
+                ? { ...session, updated_at: updated.updated_at, preferences: updated.preferences }
+                : session,
+            ),
       );
     },
     [sessions],

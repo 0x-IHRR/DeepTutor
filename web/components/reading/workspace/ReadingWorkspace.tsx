@@ -3,8 +3,6 @@
 import { scopedUrl } from "@/lib/workspace-scope";
 import { READING_HOME, readingFolderRoute, readingSessionIdFromPath } from "@/lib/learning-routes";
 
-import Tooltip from "@/shared/ui/Tooltip";
-
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
@@ -14,20 +12,10 @@ import {
   useSearchParams,
 } from "next/navigation";
 import {
-  ArrowLeft,
   CircleAlert,
-  Expand,
   GraduationCap,
   Loader2,
-  Maximize2,
-  Minimize2,
   NotebookPen,
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
-  Plus,
-  SquarePen,
   StickyNote,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -76,12 +64,12 @@ import {
   MaterialProcessing,
 } from "./WorkspaceChrome";
 import { ReadingCompanion } from "./ReadingCompanion";
-import { PageToolButtons, ReadAloudButton } from "./ReadAloudButton";
+import { CompanionHead, ReadingBar } from "./ReadingBar";
 import {
   WorkspaceMenuContext,
   type WorkspaceMenuItem,
 } from "@/components/reading/workspace-menu-context";
-import { WorkspaceMenu, useWorkspaceMenuHost } from "./WorkspaceMenu";
+import { useWorkspaceMenuHost } from "./WorkspaceMenu";
 import { useReadingWorkspace } from "./useReadingWorkspace";
 import { useReadingLearningMode } from "./useLearningMode";
 
@@ -196,6 +184,8 @@ export function ReadingWorkspacePage() {
   } | null>(null);
   const prefillInputRef = useRef<((text: string) => void) | null>(null);
   const [isDesktopWide, setIsDesktopWide] = useState(false);
+  // The bar's place for the open document's title row (see ReaderPane).
+  const [docSlot, setDocSlot] = useState<HTMLDivElement | null>(null);
 
   // A Course Study hand-off may have written the opening line before sending
   // the learner here. Consumed once, so a refresh does not retype it.
@@ -262,6 +252,7 @@ export function ReadingWorkspacePage() {
     companionOpen,
   });
   const { navigatorOpen, exitFocus } = panels;
+  const companionDocked = isDesktopWide && companionOpen;
   const setCompanionOpen = useCallback(
     (open: boolean) => {
       if (!open) exitFocus();
@@ -446,150 +437,14 @@ export function ReadingWorkspacePage() {
       ref={mainRef}
       data-learning={learning ? "true" : undefined}
       data-reading-workspace=""
-      className="reading-v2 flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background)] text-[var(--foreground)] dark:bg-[var(--background)] dark:text-[var(--foreground)]"
+      className="reading-v2 dt-reading-desk flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background)] text-[var(--foreground)] dark:bg-[var(--background)] dark:text-[var(--foreground)]"
     >
-      <header className="flex h-11 shrink-0 items-center gap-1.5 border-b border-[var(--border)] bg-[var(--card)] px-2.5">
-        <Link
-          href={readingFolderRoute(workspace.workspace_id)}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)]"
-          aria-label={t("Back to folder")}
-        >
-          <ArrowLeft size={14} />
-        </Link>
-        {/* The outline opens on the left, so its switch lives on the left:
-            it sat at the far right, next to the companion's, and a learner
-            had to guess which of two panel icons was which. */}
-        <Tooltip label={navigatorOpen ? t("Collapse contents") : t("Expand contents")}>
-          <button
-            type="button"
-            onClick={() => toggleNavigator(!navigatorOpen)}
-            className={`flex size-7 shrink-0 items-center justify-center rounded-md transition hover:bg-[var(--muted)] ${
-              navigatorOpen
-                ? "text-[var(--primary)]"
-                : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-            }`}
-            aria-label={
-              navigatorOpen ? t("Collapse contents") : t("Expand contents")
-            }
-            aria-expanded={navigatorOpen}
-          >
-            {navigatorOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
-          </button>
-        </Tooltip>
-        <span className="inline-flex min-w-0 max-w-[240px] shrink-0">
-          <Tooltip label={t("Rename collection")} suppressed={showRename}>
-            <button
-              type="button"
-              onClick={() => setShowRename(true)}
-              className="min-w-0 max-w-[240px] truncate font-serif text-[13.5px] font-semibold tracking-[-0.01em] transition hover:text-[var(--primary)]"
-            >
-              {workspace.title}
-            </button>
-          </Tooltip>
-        </span>
-        <Tooltip label={t("Add material")}>
-          <button
-            type="button"
-            onClick={() => setShowAddSource(true)}
-            className="flex size-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--primary)]"
-            aria-label={t("Add material")}
-          >
-            <Plus size={14} />
-          </button>
-        </Tooltip>
 
-        <div className="ml-auto flex shrink-0 items-center gap-0.5">
-          {notice && (
-            <span className="hidden max-w-[220px] truncate px-2 text-[10px] text-[var(--muted-foreground)] 2xl:inline">
-              {notice}
-            </span>
-          )}
-          <ReadAloudButton disabled={!materialReady} />
-          <PageToolButtons
-            disabled={!materialReady || state.isStreaming}
-            onQuiz={quizThisPage}
-          />
-          {/* An icon, like every other control on this bar: as the only
-              labelled button it read as the page's primary action. */}
-          <Tooltip label={t(learning ? "Exit learning mode" : "Fullscreen learning")}>
-            <button
-              type="button"
-              onClick={() => (learning ? closeLearning() : openLearning())}
-              className={`flex size-7 shrink-0 items-center justify-center rounded-md transition hover:bg-[var(--muted)] ${
-                learning
-                  ? "text-[var(--primary)]"
-                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-              }`}
-              aria-pressed={learning}
-              aria-label={t(
-                learning ? "Exit learning mode" : "Fullscreen learning",
-              )}
-            >
-              {learning ? <Minimize2 size={14} /> : <Expand size={14} />}
-            </button>
-          </Tooltip>
-          <WorkspaceMenu
-            sections={menuSections}
-            collection={collectionMenu}
-          />
-          {/* Past conversations are in the app sidebar with every other one;
-              this bar only starts a fresh one. Beside the companion's switch,
-              since that is the column it clears. */}
-          <Tooltip label={t("New conversation")}>
-            <button
-              type="button"
-              onClick={newConversation}
-              disabled={!activeConversation}
-              className="flex size-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
-              aria-label={t("New conversation")}
-            >
-              <SquarePen size={14} />
-            </button>
-          </Tooltip>
-          <button
-            type="button"
-            onClick={() => toggleCompanion(!companionOpen)}
-            className={`flex size-7 items-center justify-center rounded-md transition hover:bg-[var(--muted)] ${
-              companionOpen
-                ? "text-[var(--primary)]"
-                : "text-[var(--muted-foreground)]"
-            }`}
-            aria-label={t("Reading companion")}
-            aria-expanded={companionOpen}
-          >
-            {companionOpen ? (
-              <PanelRightClose size={14} />
-            ) : (
-              <PanelRightOpen size={14} />
-            )}
-          </button>
-          {isDesktopWide && companionOpen && (
-            <Tooltip
-              label={
-                panels.companionFocus ? t("Exit companion focus") : t("Focus reading companion")
-              }
-            >
-              <button
-                type="button"
-                onClick={panels.toggleFocus}
-                className="flex size-7 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--primary)]"
-                aria-label={
-                  panels.companionFocus
-                    ? t("Exit companion focus")
-                    : t("Focus reading companion")
-                }
-                aria-pressed={panels.companionFocus}
-              >
-                {panels.companionFocus ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-              </button>
-            </Tooltip>
-          )}
-        </div>
-      </header>
-
+      {/* One desk: the bar sits over the document columns only, and a docked
+          companion runs the full height beside them as a sheet of its own. */}
       <div
         ref={gridRef}
-        className={`relative grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] overflow-hidden ${
+        className={`relative grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden ${
           companionOpen
             ? navigatorOpen
               ? "grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(184px,230px)_minmax(360px,1fr)] xl:grid-cols-[minmax(184px,230px)_minmax(360px,1fr)_5px_minmax(330px,420px)]"
@@ -600,6 +455,28 @@ export function ReadingWorkspacePage() {
         }`}
         style={panels.gridStyle}
       >
+        <div className={`min-w-0 ${companionDocked ? "[grid-column:1/-3]" : "col-span-full"}`}>
+          <ReadingBar
+            backHref={readingFolderRoute(workspace.workspace_id)}
+            title={workspace.title}
+            renaming={showRename}
+            onRename={() => setShowRename(true)}
+            onAdd={() => setShowAddSource(true)}
+            navigatorOpen={navigatorOpen}
+            onToggleNavigator={() => toggleNavigator(!navigatorOpen)}
+            docSlot={setDocSlot}
+            notice={notice}
+            materialReady={materialReady}
+            busy={state.isStreaming}
+            onQuiz={quizThisPage}
+            learning={learning}
+            onToggleLearning={() => (learning ? closeLearning() : openLearning())}
+            menuSections={menuSections}
+            collection={collectionMenu}
+            companionOpen={companionOpen}
+            onOpenCompanion={() => toggleCompanion(true)}
+          />
+        </div>
         {scrimClass && (
           <button
             type="button"
@@ -675,10 +552,11 @@ export function ReadingWorkspacePage() {
             max={panels.navigatorMax}
             direction={1}
             onResize={panels.resizeNavigator}
+            className="row-start-2"
           />
         )}
 
-        <section className="relative min-h-0 min-w-0 overflow-hidden border-r border-[var(--border)] bg-[var(--secondary)] dark:border-[var(--border)] dark:bg-[var(--secondary)]">
+        <section className="dt-reading-canvas relative row-start-2 min-h-0 min-w-0 overflow-hidden bg-[var(--secondary)]">
           {!activeTab ? (
             <EmptyWorkspace onAdd={() => setShowAddSource(true)} />
           ) : activeTab.material.status === "failed" ? (
@@ -725,6 +603,7 @@ export function ReadingWorkspacePage() {
                   void toggleBookmark(locator, label)
                 }
                 onClose={() => router.push(scopedUrl(READING_HOME))}
+                headSlot={docSlot}
               />
             </div>
           )}
@@ -739,6 +618,7 @@ export function ReadingWorkspacePage() {
             max={panels.companionMax}
             direction={-1}
             onResize={panels.resizeCompanion}
+            className="row-span-2 row-start-1 [grid-column:-3/-2]"
           />
         )}
 
@@ -753,6 +633,15 @@ export function ReadingWorkspacePage() {
             onClearSelection={() => setSelection(null)}
             onOpenLinker={openLinker}
             prefillInputRef={prefillInputRef}
+            head={
+              <CompanionHead
+                title={activeConversation?.title}
+                canStartOver={Boolean(activeConversation)}
+                onStartOver={newConversation}
+                focus={isDesktopWide ? { active: panels.companionFocus, toggle: panels.toggleFocus } : undefined}
+                onClose={() => toggleCompanion(false)}
+              />
+            }
           />
         )}
       </div>

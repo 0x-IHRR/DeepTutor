@@ -8,6 +8,7 @@ import {
   subscribeTaskBoardChanges,
   type TaskCard,
 } from '@/lib/task-board-api'
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspaceId'
 export default function NoteTaskBlock({
   data,
   prompt,
@@ -18,6 +19,7 @@ export default function NoteTaskBlock({
   onChange: (props: { data?: string }) => void
 }) {
   const { t } = useTranslation()
+  const workspaceId = useActiveWorkspaceId()
   const [card, setCard] = useState<TaskCard | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -34,14 +36,14 @@ export default function NoteTaskBlock({
         if (!cancelled) setCard(board.cards.find(c => c.id === taskId) || null)
       })
       .catch(e => setError(String(e)))
-    const unsubscribe = subscribeTaskBoardChanges(board => {
-      setCard(board.cards.find(c => c.id === taskId) || null)
+    const unsubscribe = subscribeTaskBoardChanges((board, scope) => {
+      if (scope === (workspaceId || '')) setCard(board.cards.find(c => c.id === taskId) || null)
     })
     return () => {
       cancelled = true
       unsubscribe()
     }
-  }, [taskId])
+  }, [taskId, workspaceId])
   const create = async () => {
     setBusy(true)
     try {
@@ -76,6 +78,17 @@ export default function NoteTaskBlock({
             }
           />
           <span>{card.title}</span>
+          <input
+            type="date"
+            aria-label={t('Due date')}
+            value={card.due_date || ''}
+            className="bg-transparent text-xs"
+            onChange={e =>
+              void updateTaskCard(card.id, { due_date: e.target.value || null }).catch(e =>
+                setError(String(e))
+              )
+            }
+          />
           <a href="/kanban" className="text-xs text-[var(--primary)]">
             {t('Open task board')}
           </a>

@@ -53,6 +53,7 @@ export function installDemoTransport() {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             workspace_id: null,
+            due_date: null,
           },
           {
             id: 'task-2',
@@ -63,6 +64,7 @@ export function installDemoTransport() {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             workspace_id: null,
+            due_date: null,
           },
         ],
         colors: DEFAULT_TASK_COLORS,
@@ -79,6 +81,7 @@ export function installDemoTransport() {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           workspace_id: null,
+          due_date: typeof body.due_date === 'string' ? body.due_date : null,
         })
       if (method === 'PATCH')
         board.cards = board.cards.map(card =>

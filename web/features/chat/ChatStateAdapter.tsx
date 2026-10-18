@@ -172,6 +172,10 @@ export function emptyResourceSelection(): ResourceSelection {
 export interface ChatState {
   /** Local identity, available before the backend assigns a session ID. */
   sessionKey: string;
+  /** The draft key this entry had before the server bound it to a session.
+   *  Lets per-conversation UI state (the viewer's tabs) follow the draft
+   *  across the re-key instead of mistaking it for leaving the draft. */
+  boundFromKey?: string | null;
   sessionId: string | null;
   sessionTitle: string;
   enabledTools: string[];
@@ -195,6 +199,10 @@ export interface ChatState {
   /** Session-level persona preference; "" = Default (no persona). Applies
    *  to every following message until changed (persisted on the session). */
   personaSelection: string;
+  /** Who answers this conversation instead of DeepTutor — `partner:<id>` or
+   *  `subagent:<name>`; null when DeepTutor does. Sent with every turn and
+   *  kept on the session, so it holds until the learner hands it back. */
+  answerBy: string | null;
   /** Skills and MCP servers this conversation narrowed itself to. Empty means
    *  inherit — everything the workspace allows — which is what a conversation
    *  that never opened the pickers keeps sending. */
@@ -372,6 +380,7 @@ interface SessionSnapshot {
   workspaceId?: string | null;
   courseId?: string;
   personaSelection?: string;
+  answerBy?: string | null;
   resourceSelection?: ResourceSelection;
   language?: string;
   replyLanguageOverride?: string | null;
@@ -390,6 +399,7 @@ type Action =
   | { type: "SET_MASTERY_SESSION_MODE"; mode: string | null; key?: string }
   | { type: "SET_COURSE_ID"; courseId: string }
   | { type: "SET_PERSONA_SELECTION"; persona: string }
+  | { type: "SET_ANSWER_BY"; answerBy: string | null }
   | { type: "SET_RESOURCE_SELECTION"; selection: ResourceSelection }
   | { type: "SET_LANGUAGE"; lang: string }
   | { type: "SET_REPLY_LANGUAGE_OVERRIDE"; key: string; language: string | null }
@@ -492,6 +502,7 @@ function createSessionEntry(
     workspaceId: activeWorkspaceId() || null,
     courseId: "",
     personaSelection: "",
+    answerBy: null,
     resourceSelection: emptyResourceSelection(),
     messages: [],
     isStreaming: false,
@@ -609,25 +620,45 @@ function applySessionConfiguration(
   };
 }
 
+const MAX_CACHED_SESSIONS = 20;
+
+/**
+ * Keep at most ``MAX_CACHED_SESSIONS`` conversations in memory, dropping the
+ * least recently touched first. Every way a conversation enters the map goes
+ * through here — a new draft, one opened from history, a draft becoming a
+ * session — so browsing a long history does not hold each one opened, with
+ * its messages and traces, for the life of the tab. The one on screen and any
+ * still streaming are never dropped; a dropped one is fetched again on open.
+ */
+function trimSessions(
+  sessions: Record<string, SessionEntry>,
+  keep: string | null,
+): Record<string, SessionEntry> {
+  const keys = Object.keys(sessions);
+  if (keys.length <= MAX_CACHED_SESSIONS) return sessions;
+  const evictable = keys
+    .filter(
+      (k) => k !== keep && sessions[k].status !== "running" && !sessions[k].isStreaming,
+    )
+    .sort((a, b) => sessions[a].updatedAt - sessions[b].updatedAt);
+  const next = { ...sessions };
+  for (const k of evictable.slice(0, keys.length - MAX_CACHED_SESSIONS)) delete next[k];
+  return next;
+}
+
 /** Add an empty session under ``key`` and make it the selected one. */
 function selectFreshDraft(
   state: ProviderState,
   key: string,
   configuration?: SessionConfiguration,
 ): ProviderState {
-  const MAX_CACHED_SESSIONS = 20;
-  const nextSessions = {
-    ...state.sessions,
-    [key]: applySessionConfiguration(createSessionEntry(key), configuration),
-  };
-  const keys = Object.keys(nextSessions);
-  if (keys.length > MAX_CACHED_SESSIONS) {
-    const evictable = keys
-      .filter((k) => k !== key && nextSessions[k].status !== "running")
-      .sort((a, b) => nextSessions[a].updatedAt - nextSessions[b].updatedAt);
-    const toRemove = evictable.slice(0, keys.length - MAX_CACHED_SESSIONS);
-    for (const k of toRemove) delete nextSessions[k];
-  }
+  const nextSessions = trimSessions(
+    {
+      ...state.sessions,
+      [key]: applySessionConfiguration(createSessionEntry(key), configuration),
+    },
+    key,
+  );
   return { ...state, selectedKey: key, sessions: nextSessions };
 }
 
@@ -640,7 +671,35 @@ function isSameTurnEvent(a: StreamEvent, b: StreamEvent): boolean {
   return Boolean(aTurn && bTurn && aTurn === bTurn);
 }
 
+/**
+ * Whether ``event`` is already in ``events``. A turn's events arrive in seq
+ * order, so the latest one of the same turn usually settles it at once; only
+ * a replay of something older needs the full look. Scanning every event for
+ * every new one made a long turn quadratic.
+ */
+function hasTurnEvent(events: StreamEvent[], event: StreamEvent): boolean {
+  const seq = Number(event.seq || 0);
+  const turn = event.turn_id || "";
+  if (seq <= 0 || !turn) return false;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const other = events[index];
+    const otherSeq = Number(other.seq || 0);
+    if ((other.turn_id || "") !== turn || otherSeq <= 0) continue;
+    if (otherSeq < seq) return false;
+    break;
+  }
+  return events.some((other) => isSameTurnEvent(other, event));
+}
+
 function reducer(state: ProviderState, action: Action): ProviderState {
+  const next = reduce(state, action);
+  // Opening a conversation from history is how most of them enter memory.
+  return action.type === "LOAD_SESSION" && next !== state
+    ? { ...next, sessions: trimSessions(next.sessions, next.selectedKey) }
+    : next;
+}
+
+function reduce(state: ProviderState, action: Action): ProviderState {
   switch (action.type) {
     case "SET_TOOLS":
       return updateSelectedSession(state, (session) => ({
@@ -708,6 +767,11 @@ function reducer(state: ProviderState, action: Action): ProviderState {
       return updateSelectedSession(state, (session) => ({
         ...session,
         personaSelection: action.persona,
+      }));
+    case "SET_ANSWER_BY":
+      return updateSelectedSession(state, (session) => ({
+        ...session,
+        answerBy: action.answerBy,
       }));
     case "SET_RESOURCE_SELECTION":
       return updateSelectedSession(state, (session) => ({
@@ -924,11 +988,7 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         });
         last = msgs[msgs.length - 1];
       }
-      if (
-        (last?.events || []).some((event) =>
-          isSameTurnEvent(event, action.event),
-        )
-      ) {
+      if (hasTurnEvent(last?.events || [], action.event)) {
         return state;
       }
       const events = [...(last?.events || []), action.event];
@@ -1098,6 +1158,7 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         ...(existing ?? current),
         ...current,
         key: targetKey,
+        boundFromKey: action.key === targetKey ? current.boundFromKey : action.key,
         sessionId: action.sessionId,
         sessionTitle: current.sessionTitle || existing?.sessionTitle || "",
         activeTurnId: action.turnId || current.activeTurnId,
@@ -1111,11 +1172,12 @@ function reducer(state: ProviderState, action: Action): ProviderState {
       const nextSessions = { ...state.sessions };
       delete nextSessions[action.key];
       nextSessions[targetKey] = merged;
+      const selectedKey =
+        state.selectedKey === action.key ? targetKey : state.selectedKey;
       return {
         ...state,
-        selectedKey:
-          state.selectedKey === action.key ? targetKey : state.selectedKey,
-        sessions: nextSessions,
+        selectedKey,
+        sessions: trimSessions(nextSessions, selectedKey),
         sidebarRefreshToken: state.sidebarRefreshToken + 1,
       };
     }
@@ -1183,6 +1245,8 @@ function reducer(state: ProviderState, action: Action): ProviderState {
               action.personaSelection !== undefined
                 ? action.personaSelection
                 : existing.personaSelection,
+            answerBy:
+              action.answerBy !== undefined ? action.answerBy : existing.answerBy,
             resourceSelection:
               action.resourceSelection !== undefined
                 ? action.resourceSelection
@@ -1487,6 +1551,7 @@ interface ChatContextValue {
   setMasterySessionMode: (mode: string | null) => void;
   setCourseId: (courseId: string) => void;
   setPersonaSelection: (persona: string) => void;
+  setAnswerBy: (answerBy: string | null) => void;
   setResourceSelection: (selection: ResourceSelection) => void;
   setLanguage: (lang: string) => void;
   setReplyLanguageOverride: (language: string | null) => Promise<void>;
@@ -1690,6 +1755,7 @@ function hydrateRequestSnapshot(
     ...(asRecord(stored.config) ?? {}),
     ...(typeof stored.consultPartnerId === "string" ? { consult_partner_id: stored.consultPartnerId } : {}),
     ...(typeof stored.partnerDiscussionGroupId === "string" ? { partner_discussion_group_id: stored.partnerDiscussionGroupId } : {}),
+    ...(typeof stored.answerBy === "string" ? { answer_by: stored.answerBy } : {}),
   };
   const notebookReferences = asNotebookReferences(stored.notebookReferences);
   const historyReferences = asStringArray(stored.historyReferences);
@@ -2434,6 +2500,19 @@ export function ChatStateAdapterProvider({
         const local = stateRef.current.sessions[key];
         if (!local || local.isStreaming || local.status === "running") return;
       }
+      // Other conversations' opened traces go back to their previews, as on
+      // any switch; this one's are moot, its messages are read afresh below.
+      // Clearing outright left those traces whole in memory for good.
+      for (const [cacheKey, snapshot] of traceCacheRef.current.releaseExcept(key)) {
+        const [sessionId, messageId] = cacheKey.split(":");
+        dispatch({
+          type: "SET_MESSAGE_TRACE",
+          key: sessionId,
+          messageId: Number(messageId),
+          events: snapshot.events,
+          trace: snapshot.metadata ?? {},
+        });
+      }
       traceCacheRef.current.clear();
       const messages = hydrateMessages(session.messages ?? []);
       const loadedWorkspaceMode = normalizeWorkspaceMode(
@@ -2524,6 +2603,10 @@ export function ChatStateAdapterProvider({
           typeof session.preferences?.persona === "string"
             ? session.preferences.persona
             : "",
+        answerBy:
+          typeof session.preferences?.answer_by === "string" && session.preferences.answer_by
+            ? session.preferences.answer_by
+            : null,
         resourceSelection: {
           skills: asStringArray(session.preferences?.skills),
           mcp: asStringArray(session.preferences?.mcp),
@@ -2825,6 +2908,11 @@ export function ChatStateAdapterProvider({
       const effectiveTimedMediaId = replaySnapshot?.timedMediaId;
       const effectiveWatchingTurnFields = replaySnapshot?.watchingTurnFields ??
         (effectiveTimedMediaId ? { timed_media_id: effectiveTimedMediaId } : {});
+      // The bubble names who it was handed to, as the stored snapshot will.
+      const snapshotConfig =
+        session.answerBy && effectiveConfig?.answer_by === undefined
+          ? { ...(effectiveConfig ?? {}), answer_by: session.answerBy }
+          : effectiveConfig;
       const requestSnapshot: MessageRequestSnapshot = replaySnapshot ?? {
         resourceSelection: {skills:[...effectiveResources.skills],mcp:[...effectiveResources.mcp]},
         content,
@@ -2839,8 +2927,8 @@ export function ChatStateAdapterProvider({
         ...(effectiveAttachments?.length
           ? { attachments: effectiveAttachments }
           : {}),
-        ...(effectiveConfig && Object.keys(effectiveConfig).length > 0
-          ? { config: effectiveConfig }
+        ...(snapshotConfig && Object.keys(snapshotConfig).length > 0
+          ? { config: snapshotConfig }
           : {}),
         ...(effectiveNotebookReferences?.length
           ? { notebookReferences: effectiveNotebookReferences }
@@ -2947,6 +3035,7 @@ export function ChatStateAdapterProvider({
         subagent_consult_budget: subagentConsultBudget,
         consult_partner_id: consultPartnerId,
         partner_discussion_group_id: partnerDiscussionGroupId,
+        answer_by: answerBy,
         auto_route: autoRoute,
         ...finalTurnConfig
       } = effectiveConfig ?? {};
@@ -3019,6 +3108,11 @@ export function ChatStateAdapterProvider({
             : null,
         consultPartnerId: typeof consultPartnerId === "string" ? consultPartnerId : null,
         partnerDiscussionGroupId: typeof partnerDiscussionGroupId === "string" ? partnerDiscussionGroupId : null,
+        // A replay restates the answerer it ran with; a new turn goes to
+        // whoever this conversation is handed to now.
+        answerBy: typeof answerBy === "string"
+          ? answerBy
+          : exactReplay ? null : session.answerBy,
         subagentConsultBudget:
           typeof subagentConsultBudget === "number"
             ? subagentConsultBudget
@@ -3333,6 +3427,7 @@ export function ChatStateAdapterProvider({
     const current = ensureSelectedSession(state);
     return {
       sessionKey: current.key,
+      boundFromKey: current.boundFromKey ?? null,
       sessionId: current.sessionId,
       sessionTitle: current.sessionTitle,
       enabledTools: current.enabledTools,
@@ -3345,6 +3440,7 @@ export function ChatStateAdapterProvider({
       workspaceId: current.workspaceId,
       courseId: current.courseId,
       personaSelection: current.personaSelection,
+      answerBy: current.answerBy,
       resourceSelection: current.resourceSelection,
       messages: current.messages,
       isStreaming: current.isStreaming,
@@ -3426,6 +3522,10 @@ export function ChatStateAdapterProvider({
 
   const setPersonaSelection = useCallback((persona: string) => {
     dispatch({ type: "SET_PERSONA_SELECTION", persona });
+  }, []);
+
+  const setAnswerBy = useCallback((answerBy: string | null) => {
+    dispatch({ type: "SET_ANSWER_BY", answerBy });
   }, []);
 
   const setResourceSelection = useCallback((selection: ResourceSelection) => {
@@ -3638,6 +3738,7 @@ export function ChatStateAdapterProvider({
       setMasterySessionMode,
       setCourseId,
       setPersonaSelection,
+      setAnswerBy,
       setResourceSelection,
       setLanguage,
       setReplyLanguageOverride,
@@ -3670,6 +3771,7 @@ export function ChatStateAdapterProvider({
       setMasterySessionMode,
       setCourseId,
       setPersonaSelection,
+      setAnswerBy,
       setResourceSelection,
       setLanguage,
       setReplyLanguageOverride,

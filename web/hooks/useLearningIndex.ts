@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { readClientCache, withClientCache } from '@/lib/client-cache'
 import { usePathname } from 'next/navigation'
 import { apiFetch, apiUrl } from '@/lib/api'
-import { scopedUrl } from '@/lib/workspace-scope'
 import { subscribeSessionChanges } from '@/lib/session-events'
 import type { LearningKind, LearningSources } from '@/lib/learning-dashboard'
 
@@ -34,7 +33,7 @@ export function useLearningIndex(enabled = true) {
           CACHE_KEY,
           async () => {
             const response = await apiFetch(
-              apiUrl(scopedUrl('/api/dashboard/learning-index', '')),
+              apiUrl('/api/dashboard/learning-index'),
               {
                 signal: AbortSignal.timeout(20000),
               }

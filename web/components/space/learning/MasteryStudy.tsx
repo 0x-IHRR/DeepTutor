@@ -574,7 +574,7 @@ export function MasteryStudy({
           as a single "where am I" statement, and the ring + count are one
           unit rather than a ring on the left and its own number on the
           right saying the same thing twice. */}
-      <header className="flex h-[56px] shrink-0 items-center gap-1 border-b border-[var(--border)] bg-[var(--background)]/95 px-3 backdrop-blur sm:px-4">
+      <header className="flex h-[56px] shrink-0 items-center gap-1 bg-[var(--background)] px-3 sm:px-4">
         <Tooltip label={t("Learning topics")} side="bottom">
           <Link
             href={masteryTopicRoute(pathId)}
@@ -648,7 +648,7 @@ export function MasteryStudy({
 
       <div className="flex min-h-0 flex-1">
         <aside
-          className={`hidden shrink-0 overflow-y-auto border-r border-[var(--border)] bg-[var(--card)]/30 transition-[width] duration-200 xl:block ${
+          className={`hidden shrink-0 overflow-y-auto transition-[width] duration-200 xl:block ${
             outlineOpen ? "w-[252px] px-5 py-5" : "w-9"
           }`}
         >
@@ -698,7 +698,7 @@ export function MasteryStudy({
                     someone scrolled halfway down, not by someone looking at a
                     blank screen. */}
                 {MODE_PRESENTATION[sessionMode].noteKey && (
-                  <p className="mb-6 rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3.5 py-2.5 text-[12px] leading-5 text-[var(--muted-foreground)]">
+                  <p className="mb-6 rounded-xl bg-[rgb(var(--dt-ink,55_53_47)/0.035)] px-3.5 py-2.5 text-[12px] leading-5 text-[var(--muted-foreground)]">
                     {t(MODE_PRESENTATION[sessionMode].noteKey)}
                   </p>
                 )}
@@ -752,7 +752,7 @@ export function MasteryStudy({
                             type="button"
                             onClick={() => startFromPrompt(label)}
                             disabled={state.isStreaming || sessionLoading}
-                            className="group rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-left transition hover:-translate-y-0.5 hover:border-[var(--primary)]/35 disabled:opacity-50"
+                            className="group rounded-[14px] bg-[rgb(var(--dt-ink,55_53_47)/0.03)] p-4 text-left transition hover:-translate-y-0.5 hover:bg-[rgb(var(--dt-ink,55_53_47)/0.055)] disabled:opacity-50"
                           >
                             <Icon className="h-4 w-4 text-[var(--primary)]" />
                             <span className="mt-3 block text-xs font-medium leading-5 text-[var(--foreground)]">

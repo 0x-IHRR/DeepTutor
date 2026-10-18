@@ -17,6 +17,31 @@ from deeptutor.services.session import get_session_store
 router = APIRouter()
 
 
+async def _workspace_rows(reader) -> list[dict[str, Any]]:
+    """Read one index in the request's workspace, naming it on every row.
+
+    Switching workspace is switching stores: these indexes never merge another
+    workspace's content. The name stays on the row so follow-up requests and
+    links remain pinned to the store the row came from.
+    """
+    from deeptutor.services.workspace import get_content_workspace_service
+    from deeptutor.services.workspace.context import current_workspace_id
+
+    workspace_id = current_workspace_id()
+    names = {
+        row["workspace_id"]: row["display_name"]
+        for row in get_content_workspace_service().list_workspaces()
+    }
+    return [
+        {
+            **row,
+            "content_workspace_id": workspace_id,
+            "content_workspace_name": names.get(workspace_id, ""),
+        }
+        for row in await reader()
+    ]
+
+
 @router.get("/recent")
 async def get_recent_activities(limit: int = 50, type: str | None = None):
     store = get_session_store()
@@ -78,12 +103,11 @@ async def refresh_starter_suggestions():
 
 @router.get("/learning-index")
 async def get_learning_index():
-    """Read-only, account-wide entry points. Feature libraries remain scoped."""
+    """Read-only entry points into the request's workspace."""
     from deeptutor.api.routers.book import list_books
     from deeptutor.api.routers.mastery_path import list_topics
     from deeptutor.api.routers.reading import list_workspaces
     from deeptutor.multi_user.learning_access import current_learning_policy
-    from deeptutor.services.workspace.navigation import read_workspace_indexes
 
     async def books():
         return (await list_books())["books"]
@@ -95,16 +119,15 @@ async def get_learning_index():
         return (await list_workspaces(search=""))["workspaces"]
 
     policy = current_learning_policy()
-    allowed = set(policy.get("allowed_surfaces") or ["chat", "reading"]) if policy is not None else None
+    allowed = (
+        set(policy.get("allowed_surfaces") or ["chat", "reading"]) if policy is not None else None
+    )
     result = {"books": [], "mastery": [], "reading": [], "watching": [], "practice": []}
-    failed = []
     for kind, reader in (("books", books), ("mastery", mastery), ("reading", reading)):
         surface = "chat" if kind == "mastery" else kind
         if allowed is not None and surface not in allowed:
             continue
-        result[kind], unavailable = await read_workspace_indexes(reader)
-        if unavailable:
-            failed.append(kind)
+        result[kind] = await _workspace_rows(reader)
 
     async def watching():
         from deeptutor.services.session.organization import list_all_sessions_snapshot
@@ -121,25 +144,21 @@ async def get_learning_index():
         ]
 
     if allowed is None or "reading" in allowed:
-        result["watching"], unavailable = await read_workspace_indexes(watching)
-        if unavailable:
-            failed.append("watching")
+        result["watching"] = await _workspace_rows(watching)
     if allowed is None or "chat" in allowed:
+
         async def practice():
             from deeptutor.services.session import get_sqlite_session_store
 
             return await get_sqlite_session_store().list_notebook_navigation()
 
-        result["practice"], unavailable = await read_workspace_indexes(practice)
-        if unavailable:
-            failed.append("practice")
-    return {"sources": result, "failed": failed}
+        result["practice"] = await _workspace_rows(practice)
+    return {"sources": result, "failed": []}
 
 
 @router.get("/source-library/{kind}")
 async def get_source_library(kind: str):
-    """Read account-owned source indexes; preserve the workspace on every row."""
-    from deeptutor.services.workspace.navigation import read_workspace_indexes
+    """Source indexes of the request's workspace, for the topic and book pickers."""
 
     async def read():
         if kind == "notebooks":
@@ -157,30 +176,34 @@ async def get_source_library(kind: str):
         raise HTTPException(404, "Unknown source library")
 
     if kind == "knowledge":
-        from deeptutor.services.workspace.knowledge import knowledge_catalog
+        # The workspace's own knowledge bases plus the ones assigned to it.
+        from deeptutor.multi_user.knowledge_access import list_visible_knowledge_bases
+        from deeptutor.services.workspace.context import current_workspace_id
+        from deeptutor.services.workspace.knowledge import parse_kb_id
 
-        items = [
-            {
-                **row,
-                "content_workspace_id": row.get("workspace_id", ""),
-                "content_workspace_name": row.get("provenance_label", ""),
-            }
-            for row in knowledge_catalog()
-        ]
+        items = []
+        for row in list_visible_knowledge_bases():
+            # Own bases carry a local id; assigned ones name their home store.
+            parsed = parse_kb_id(str(row.get("id") or ""))
+            origin = parsed[0] if parsed is not None else current_workspace_id()
+            items.append(
+                {
+                    **row,
+                    "content_workspace_id": origin,
+                    "content_workspace_name": row.get("provenance_label", ""),
+                }
+            )
         return {"items": items, "unavailable_workspaces": []}
     if kind in {"books", "practice"}:
         return await get_learning_library(kind)
     if kind not in {"notebooks", "chats", "drafts"}:
         raise HTTPException(404, "Unknown source library")
-    items, unavailable = await read_workspace_indexes(read)
-    return {"items": items, "unavailable_workspaces": unavailable}
+    return {"items": await _workspace_rows(read), "unavailable_workspaces": []}
 
 
 @router.get("/learning-library/{kind}")
 async def get_learning_library(kind: str):
-    """Account-wide discovery. Items retain their source for scoped follow-up requests."""
-    from deeptutor.services.workspace.navigation import read_workspace_indexes
-
+    """The request's workspace library of one kind."""
     can_create = True
 
     async def read():
@@ -232,8 +255,8 @@ async def get_learning_library(kind: str):
 
     if kind not in {"books", "mastery", "reading", "materials", "practice", "watching"}:
         raise HTTPException(status_code=404, detail="Unknown learning library")
-    rows, unavailable = await read_workspace_indexes(read)
-    return {"items": rows, "unavailable_workspaces": unavailable, "can_create": can_create}
+    rows = await _workspace_rows(read)
+    return {"items": rows, "unavailable_workspaces": [], "can_create": can_create}
 
 
 @router.get("/{entry_id}")

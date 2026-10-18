@@ -5,16 +5,21 @@ import TaskPanelSection from "@/components/tasks/TaskPanelSection";
 import { browserStorage } from "@/shared/storage";
 
 /**
- * SessionViewerPanel — full right-side sidebar with browser-style tabs that
- * can hold (a) attachment previews and (b) embedded web pages clicked from
- * assistant messages.
+ * SessionViewerPanel — full right-side sidebar with browser-style tabs:
+ * file previews, web pages, a Markdown note, quiz follow-ups, Little Tutor
+ * threads (a selected passage, or a side chat about the conversation),
+ * GeoGebra boards and subagent runs.
  *
- * - Tabs across the top of the panel; each closeable.
+ * - Tabs across the top of the panel; each closeable. The "+" launcher
+ *   (``ViewerLauncher``) names everything the panel can hold.
+ * - Tabs belong to their conversation: switching away stashes them, coming
+ *   back restores them, and a draft keeps its tabs when its first turn makes
+ *   it a session.
  * - File tabs use the same lazy previewer set as FilePreviewDrawer.
  * - Web tabs render an iframe of the URL. Cross-origin frames may refuse
  *   to load — we expose an "Open in browser" affordance so the user can
  *   always fall back. The user's network ultimately decides what loads.
- * - Imperative API via ref: openFileTab(att), openWebTab(url).
+ * - Imperative API via ref (``SessionViewerPanelHandle``).
  */
 
 import {
@@ -33,12 +38,10 @@ import {
   Activity,
   AlertCircle,
   ArrowLeft,
-  ArrowRight,
-  ChevronRight,
+  Bot,
   Compass,
   Download,
   ExternalLink,
-  FileUp,
   Globe,
   GraduationCap,
   Loader2,
@@ -47,6 +50,7 @@ import {
   Paperclip,
   Plus,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -55,15 +59,19 @@ import {
   type FilePreviewSource,
 } from "@/components/chat/preview/previewerFor";
 import {
-  ACTIVITY_LABEL,
-  ACTIVITY_ROW_HOVER,
-  ACTIVITY_TILE,
   ActivityBody,
   type SessionActivity,
 } from "@/components/chat/home/SessionActivityPanel";
+import ViewerLauncher, {
+  type LauncherClosedTab,
+  type LauncherThread,
+} from "@/components/chat/home/ViewerLauncher";
 import QuizFollowupTabBody from "@/components/quiz/QuizFollowupTabBody";
 import ConsultationTabBody from "@/components/chat/home/ConsultationTabBody";
-import type { QuizFollowupTabContext } from "@/context/QuizFollowupContext";
+import {
+  type QuizFollowupTabContext,
+  useOptionalQuizFollowupController,
+} from "@/context/QuizFollowupContext";
 import type { GeogebraTabPayload } from "@/context/GeogebraTabContext";
 import { apiUrl } from "@/lib/api";
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
@@ -72,8 +80,13 @@ import Tooltip from "@/shared/ui/Tooltip";
 import {
   normalizeSelectedText,
   selectionTutorKey,
+  sideChatKey,
   type SelectionTutorContext,
 } from "@/lib/selection-tutor";
+import { listSessionThreads, type SessionSummary } from "@/lib/session-api";
+import { subscribeSessionChanges } from "@/lib/session-events";
+import { isPlaceholderSessionTitle } from "@/lib/session-title";
+import { SHORTCUTS } from "@/lib/shortcuts";
 
 const PdfPreview = dynamic(
   () => import("@/components/chat/preview/previewers/PdfPreview"),
@@ -173,6 +186,8 @@ type ViewerTab =
       id: string;
       label: string;
       script: string;
+      /** A blank board the learner draws on, with GeoGebra's own tools. */
+      editable?: boolean;
     }
   | { kind: "new"; id: string; label: string }
   | {
@@ -195,6 +210,8 @@ export interface SessionViewerPanelHandle {
     selection: SelectionTutorContext,
     language: string,
   ): void;
+  /** Opens a Little Tutor side chat about the whole conversation. */
+  openSideChatTab(): void;
   /** Opens (or focuses) an interactive GeoGebra applet tab. */
   openGeogebraTab(payload: GeogebraTabPayload): void;
   /** Opens (first time) or live-updates a connected subagent's run tab. */
@@ -204,9 +221,27 @@ export interface SessionViewerPanelHandle {
   focusActivityHome(): void;
 }
 
+/** What a side chat opened from the viewer is about. */
+export interface ViewerConversation {
+  title: string;
+  /** The last persisted message on the branch on screen; null before one. */
+  leafMessageId: number | null;
+  language: string;
+}
+
 export interface SessionViewerPanelProps {
   open: boolean;
   sessionId: string | null;
+  /** The conversation whose tabs are showing (a draft has a key before it
+   *  has a session id). Falls back to ``sessionId``. */
+  sessionKey?: string;
+  /** The key this conversation had before the server bound it — a draft
+   *  whose first turn just made it a session. Its tabs carry over. */
+  reboundFromKey?: string | null;
+  /** Grounding for a side chat; absent before the conversation has a reply. */
+  conversation?: ViewerConversation | null;
+  /** Store scope for reading this conversation's Little Tutor threads. */
+  workspaceId?: string | null;
   onClose: () => void;
   onAutoOpen: () => void;
   /** Aggregated session activity, shown on the Activity home view. */
@@ -247,6 +282,39 @@ function subagentTabIdFor(callId: string): string {
   return `subagent:${callId}`;
 }
 
+/** One icon per kind of tab, shared by the tab bar and the launcher. */
+function tabIcon(tab: ViewerTab): LucideIcon {
+  switch (tab.kind) {
+    case "web":
+      return Globe;
+    case "markdown-note":
+      return NotebookPen;
+    case "selection-tutor":
+      return GraduationCap;
+    case "quiz-followup":
+      return MessageSquarePlus;
+    case "geogebra":
+      return Compass;
+    case "subagent":
+      return Bot;
+    case "new":
+      return Plus;
+    default:
+      return Paperclip;
+  }
+}
+
+interface StashedTabs {
+  tabs: ViewerTab[];
+  activeTabId: string | null;
+  closedTabs: ViewerTab[];
+}
+
+/** Conversations whose tabs are kept for when the learner comes back. */
+const STASHED_CONVERSATIONS = 12;
+/** Closed tabs offered back on the launcher, newest first. */
+const RECENTLY_CLOSED_LIMIT = 4;
+
 function hostnameFor(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -275,6 +343,10 @@ function SessionViewerPanelInner(
   {
     open,
     sessionId,
+    sessionKey,
+    reboundFromKey = null,
+    conversation = null,
+    workspaceId = null,
     onClose,
     onAutoOpen,
     activity,
@@ -285,8 +357,10 @@ function SessionViewerPanelInner(
   ref: React.Ref<SessionViewerPanelHandle>,
 ) {
   const { t } = useTranslation();
+  const followups = useOptionalQuizFollowupController();
   const [tabs, setTabs] = useState<ViewerTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [closedTabs, setClosedTabs] = useState<ViewerTab[]>([]);
 
   // Drag-to-resize width. The width is NOT React state — the panel reads it
   // from the ``--viewer-width`` CSS var (so does the chat shell's squeeze),
@@ -349,15 +423,32 @@ function SessionViewerPanelInner(
     window.addEventListener("pointerup", onUp);
   }, []);
 
-  // Wipe tabs whenever the session changes — preview/web state belongs to
-  // the conversation that triggered it.
-  const [trackedSessionId, setTrackedSessionId] = useState<string | null>(
-    sessionId,
+  // Tabs belong to the conversation that opened them. Leaving one stashes its
+  // tabs and coming back restores them. A draft whose first turn just bound
+  // it to a session is the same conversation under a new key: it keeps them.
+  const tabsKey = sessionKey ?? sessionId ?? "draft";
+  const [stash, setStash] = useState<ReadonlyMap<string, StashedTabs>>(
+    () => new Map(),
   );
-  if (trackedSessionId !== sessionId) {
-    setTrackedSessionId(sessionId);
-    setTabs([]);
-    setActiveTabId(null);
+  const [trackedKey, setTrackedKey] = useState(tabsKey);
+  if (trackedKey !== tabsKey) {
+    setTrackedKey(tabsKey);
+    if (reboundFromKey !== trackedKey) {
+      const restored = stash.get(tabsKey);
+      // Re-inserted so a Map's insertion order stays oldest-first.
+      const next = new Map(stash);
+      next.delete(trackedKey);
+      next.delete(tabsKey);
+      next.set(trackedKey, { tabs, activeTabId, closedTabs });
+      for (const key of next.keys()) {
+        if (next.size <= STASHED_CONVERSATIONS) break;
+        next.delete(key);
+      }
+      setStash(next);
+      setTabs(restored?.tabs ?? []);
+      setActiveTabId(restored?.activeTabId ?? null);
+      setClosedTabs(restored?.closedTabs ?? []);
+    }
   }
 
   const openFileTab = useCallback(
@@ -475,21 +566,20 @@ function SessionViewerPanelInner(
     [onAutoOpen],
   );
 
-  const openSelectionTutorTab = useCallback(
-    (selection: SelectionTutorContext, language: string) => {
-      const selectedText = normalizeSelectedText(selection.selectedText);
-      if (!selectedText) return;
-      const questionKey = selectionTutorKey(
-        selectedText,
-        sessionId,
-        selection.sourceMessageId,
-      );
+  /** Open (or focus) one Little Tutor thread, whatever it is pinned to. */
+  const openTutorTab = useCallback(
+    (
+      questionKey: string,
+      tutorSelection: SelectionTutorContext,
+      language: string,
+      followupSessionId: string | null = null,
+    ) => {
       const id = selectionTutorTabIdFor(questionKey);
       const context: QuizFollowupTabContext = {
         questionKey,
         question: {
           question_id: questionKey,
-          question: selectedText,
+          question: tutorSelection.selectedText,
           question_type: "concept",
           correct_answer: "",
           explanation: "",
@@ -500,16 +590,10 @@ function SessionViewerPanelInner(
         aiJudgment: "",
         parentQuizSessionId: null,
         notebookEntryId: null,
-        followupSessionId: null,
+        followupSessionId,
         language,
         tabLabel: t("Little Tutor"),
-        tutorSelection: {
-          selectedText,
-          parentSessionId: sessionId,
-          sourceMessageId: selection.sourceMessageId,
-          sourceMessageText: selection.sourceMessageText,
-          sourceMessageRole: selection.sourceMessageRole,
-        },
+        tutorSelection,
       };
 
       setTabs((prev) => {
@@ -531,8 +615,114 @@ function SessionViewerPanelInner(
       });
       onAutoOpen();
     },
-    [onAutoOpen, sessionId, t],
+    [onAutoOpen, t],
   );
+
+  const openSelectionTutorTab = useCallback(
+    (selection: SelectionTutorContext, language: string) => {
+      const selectedText = normalizeSelectedText(selection.selectedText);
+      if (!selectedText) return;
+      openTutorTab(
+        selectionTutorKey(selectedText, sessionId, selection.sourceMessageId),
+        {
+          scope: "selection",
+          selectedText,
+          parentSessionId: sessionId,
+          sourceMessageId: selection.sourceMessageId,
+          sourceMessageText: selection.sourceMessageText,
+          sourceMessageRole: selection.sourceMessageRole,
+        },
+        language,
+      );
+    },
+    [openTutorTab, sessionId],
+  );
+
+  const sideChatSelection = useCallback(
+    (): SelectionTutorContext | null =>
+      sessionId && conversation
+        ? {
+            scope: "conversation",
+            selectedText: "",
+            parentSessionId: sessionId,
+            sourceMessageId: conversation.leafMessageId,
+            sourceMessageText: "",
+            sourceMessageRole: "assistant",
+            parentTitle: conversation.title,
+          }
+        : null,
+    [conversation, sessionId],
+  );
+
+  /** A side chat about the whole conversation. A side chat already open and
+   *  still empty is focused rather than joined by a second blank one. */
+  const openSideChatTab = useCallback(() => {
+    const selection = sideChatSelection();
+    if (!selection || !sessionId || !conversation) return;
+    const blank = tabs.find(
+      (tab) =>
+        tab.kind === "selection-tutor" &&
+        tab.context.tutorSelection?.scope === "conversation" &&
+        !tab.context.followupSessionId &&
+        (followups?.getThread(tab.context.questionKey).messages.length ?? 0) === 0,
+    );
+    if (blank) {
+      setActiveTabId(blank.id);
+      onAutoOpen();
+      return;
+    }
+    openTutorTab(sideChatKey(sessionId), selection, conversation.language);
+  }, [conversation, followups, onAutoOpen, openTutorTab, sessionId, sideChatSelection, tabs]);
+
+  /** Bring back an earlier thread, its history read from the server. A thread
+   *  still live in this page keeps its key, so its in-flight state survives. */
+  const openTutorThread = useCallback(
+    (thread: SessionSummary) => {
+      if (!sessionId) return;
+      const prefs = thread.preferences ?? {};
+      const pinnedText = (prefs.tutor_selected_text ?? "").trim();
+      const sourceId = prefs.tutor_source_message_id;
+      // A selection pinned to a message that was never persisted cannot be
+      // grounded again; such a thread continues as a side chat.
+      const selection: SelectionTutorContext | null =
+        prefs.tutor_scope !== "conversation" &&
+        pinnedText &&
+        typeof sourceId === "number" &&
+        sourceId > 0
+          ? {
+              scope: "selection",
+              selectedText: pinnedText,
+              parentSessionId: sessionId,
+              sourceMessageId: sourceId,
+              sourceMessageText: "",
+              sourceMessageRole: "assistant",
+            }
+          : sideChatSelection();
+      if (!selection) return;
+      const live = followups
+        ? Object.entries(followups.getAllThreads()).find(
+            ([, state]) => state.sessionId === thread.session_id,
+          )?.[0]
+        : undefined;
+      openTutorTab(
+        live ?? `tutor-thread:${thread.session_id}`,
+        selection,
+        conversation?.language ?? prefs.language ?? "en",
+        thread.session_id,
+      );
+    },
+    [conversation, followups, openTutorTab, sessionId, sideChatSelection],
+  );
+
+  const openGeogebraBoard = useCallback(() => {
+    const id = geogebraTabIdFor(`board-${Date.now().toString(36)}`);
+    setTabs((prev) => [
+      ...prev,
+      { kind: "geogebra", id, label: t("GeoGebra board"), script: "", editable: true },
+    ]);
+    setActiveTabId(id);
+    onAutoOpen();
+  }, [onAutoOpen, t]);
 
   const openGeogebraTab = useCallback(
     (payload: GeogebraTabPayload) => {
@@ -609,6 +799,7 @@ function SessionViewerPanelInner(
       openMarkdownNoteTab,
       openQuizFollowupTab,
       openSelectionTutorTab,
+      openSideChatTab,
       openGeogebraTab,
       openSubagentTab,
       focusActivityHome,
@@ -619,6 +810,7 @@ function SessionViewerPanelInner(
       openMarkdownNoteTab,
       openQuizFollowupTab,
       openSelectionTutorTab,
+      openSideChatTab,
       openGeogebraTab,
       openSubagentTab,
       focusActivityHome,
@@ -630,6 +822,15 @@ function SessionViewerPanelInner(
       setTabs((prev) => {
         const idx = prev.findIndex((tab) => tab.id === id);
         if (idx === -1) return prev;
+        const closed = prev[idx];
+        if (closed.kind !== "new") {
+          setClosedTabs((recent) =>
+            [closed, ...recent.filter((tab) => tab.id !== id)].slice(
+              0,
+              RECENTLY_CLOSED_LIMIT,
+            ),
+          );
+        }
         const next = prev.filter((tab) => tab.id !== id);
         if (activeTabId === id) {
           // Fall back to the previous tab, or to the Activity home when none
@@ -645,6 +846,86 @@ function SessionViewerPanelInner(
     },
     [activeTabId],
   );
+
+  const reopenClosedTab = useCallback(
+    (id: string) => {
+      const closed = closedTabs.find((tab) => tab.id === id);
+      if (!closed) return;
+      setClosedTabs((recent) => recent.filter((tab) => tab.id !== id));
+      setTabs((prev) =>
+        prev.some((tab) => tab.id === id)
+          ? prev.filter((tab) => tab.id !== newTabId)
+          : [...prev.filter((tab) => tab.id !== newTabId), closed],
+      );
+      setActiveTabId(id);
+    },
+    [closedTabs],
+  );
+
+  // This conversation's Little Tutor threads, read when the launcher opens —
+  // new threads appear between two openings, never while one is on screen.
+  const launcherOpen = tabs.some((tab) => tab.id === newTabId) && activeTabId === newTabId;
+  const [threads, setThreads] = useState<{ sessionId: string; rows: SessionSummary[] }>({
+    sessionId: "",
+    rows: [],
+  });
+  const [threadsRevision, setThreadsRevision] = useState(0);
+  useEffect(() => subscribeSessionChanges(() => setThreadsRevision((n) => n + 1)), []);
+  useEffect(() => {
+    if (!launcherOpen || !sessionId) return;
+    const controller = new AbortController();
+    listSessionThreads(sessionId, workspaceId ?? undefined, controller.signal)
+      .then((rows) => setThreads({ sessionId, rows }))
+      .catch(() => {
+        /* the launcher simply omits threads it cannot read */
+      });
+    return () => controller.abort();
+  }, [launcherOpen, sessionId, threadsRevision, workspaceId]);
+
+  const openThreadSessionIds = new Set(
+    tabs.flatMap((tab) =>
+      tab.kind === "selection-tutor"
+        ? [
+            followups?.getThread(tab.context.questionKey).sessionId ??
+              tab.context.followupSessionId,
+          ].filter((value): value is string => Boolean(value))
+        : [],
+    ),
+  );
+  const threadRows = threads.sessionId === sessionId ? threads.rows : [];
+  const launcherThreads: LauncherThread[] = threadRows
+    .filter((row) => !openThreadSessionIds.has(row.session_id))
+    .slice(0, 6)
+    .map((row) => {
+      const pinned = (row.preferences?.tutor_selected_text ?? "").trim();
+      const excerpt = pinned.length > 80 ? `${pinned.slice(0, 80)}…` : pinned;
+      const about =
+        row.preferences?.tutor_scope === "conversation" || !excerpt
+          ? t("About the whole conversation")
+          : `“${excerpt}”`;
+      return {
+        id: row.session_id,
+        title: isPlaceholderSessionTitle(row.title)
+          ? excerpt || t("Side chat")
+          : row.title,
+        detail: about,
+        updatedAt: row.updated_at,
+      };
+    });
+  const threadIds = new Set(threadRows.map((row) => row.session_id));
+  const launcherClosedTabs: LauncherClosedTab[] = closedTabs
+    .filter((tab) => !tabs.some((open) => open.id === tab.id))
+    // A thread the server already lists is offered there, with its history.
+    .filter(
+      (tab) =>
+        tab.kind !== "selection-tutor" ||
+        !threadIds.has(
+          followups?.getThread(tab.context.questionKey).sessionId ??
+            tab.context.followupSessionId ??
+            "",
+        ),
+    )
+    .map((tab) => ({ id: tab.id, label: tab.label, icon: tabIcon(tab) }));
 
   // ESC closes the panel.
   useEffect(() => {
@@ -761,18 +1042,31 @@ function SessionViewerPanelInner(
             context={activeTab.context}
           />
         ) : activeTab?.kind === "geogebra" ? (
-          <GeogebraTabBody key={activeTab.id} script={activeTab.script} />
+          <GeogebraTabBody
+            key={activeTab.id}
+            script={activeTab.script}
+            editable={activeTab.editable}
+          />
         ) : activeTab?.kind === "new" ? (
-          <div className="h-full overflow-y-auto px-3 pb-8 pt-1 sm:px-3.5">
-            <ActivityOpener
-              autoFocus
-              onOpenWebTab={(url) => openFromNewTab(() => openWebTab(url))}
-              onOpenLocalFile={(file) =>
-                openFromNewTab(() => openLocalFile(file))
-              }
-              onOpenMarkdownNote={() => openFromNewTab(openMarkdownNoteTab)}
-            />
-          </div>
+          <ViewerLauncher
+            onOpenUrl={(url) => openFromNewTab(() => openWebTab(url))}
+            onOpenLocalFile={(file) => openFromNewTab(() => openLocalFile(file))}
+            onOpenMarkdownNote={() => openFromNewTab(openMarkdownNoteTab)}
+            onOpenGeogebraBoard={() => openFromNewTab(openGeogebraBoard)}
+            onOpenSideChat={
+              sessionId && conversation
+                ? () => openFromNewTab(openSideChatTab)
+                : undefined
+            }
+            sideChatShortcut={SHORTCUTS.sideChat}
+            threads={launcherThreads}
+            onOpenThread={(id) => {
+              const row = threadRows.find((thread) => thread.session_id === id);
+              if (row) openFromNewTab(() => openTutorThread(row));
+            }}
+            closedTabs={launcherClosedTabs}
+            onReopenTab={reopenClosedTab}
+          />
         ) : activeTab?.kind === "subagent" ? (
           <ConsultationTabBody
             key={activeTab.id}
@@ -788,8 +1082,6 @@ function SessionViewerPanelInner(
             open={visible}
             configSection={configSection}
             onOpenAttachment={openFileTab}
-            onOpenWebTab={openWebTab}
-            onOpenLocalFile={openLocalFile}
             onClose={onClose}
           />
         )}
@@ -860,20 +1152,7 @@ function TabBar({
         </button>
         {tabs.map((tab) => {
           const active = tab.id === activeTabId;
-          const Icon =
-            tab.kind === "web"
-              ? Globe
-              : tab.kind === "markdown-note"
-                ? NotebookPen
-                : tab.kind === "selection-tutor"
-                  ? GraduationCap
-                  : tab.kind === "quiz-followup"
-                    ? MessageSquarePlus
-                    : tab.kind === "geogebra"
-                      ? Compass
-                      : tab.kind === "new"
-                        ? Plus
-                        : Paperclip;
+          const Icon = tabIcon(tab);
           return (
             <div
               key={tab.id}
@@ -946,10 +1225,9 @@ function TabBar({
 /* ------------------------------------------------------------------ */
 
 /**
- * The merged Activity landing: the session-activity sections (tools, KBs,
- * Space refs, attachments — see ``ActivityBody``) plus a compact opener for
- * a URL or a local file. Clicking an attachment opens it as a file tab in
- * this same panel.
+ * The Activity landing: what this conversation has done — tasks, tools, KBs,
+ * Space refs, files (see ``ActivityBody``). Opening something new lives on
+ * the "+" launcher alone. Clicking a file opens it as a tab in this panel.
  */
 function ActivityHome({
   sessionId,
@@ -959,8 +1237,6 @@ function ActivityHome({
   open,
   configSection,
   onOpenAttachment,
-  onOpenWebTab,
-  onOpenLocalFile,
   onClose,
 }: {
   sessionId: string | null;
@@ -970,8 +1246,6 @@ function ActivityHome({
   open: boolean;
   configSection?: ReactNode;
   onOpenAttachment: (a: MessageAttachment) => void;
-  onOpenWebTab: (url: string) => void;
-  onOpenLocalFile: (file: File) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -999,118 +1273,7 @@ function ActivityHome({
         onOpenAttachment={onOpenAttachment}
         configSection={configSection}
       />
-      <ActivityOpener
-        onOpenWebTab={onOpenWebTab}
-        onOpenLocalFile={onOpenLocalFile}
-      />
     </div>
-  );
-}
-
-// A URL is not translatable — and routed through t() its "https:" prefix
-// reads as an i18next namespace separator and is eaten ("//example.com").
-const URL_PLACEHOLDER = "https://example.com";
-
-/** Two quiet action rows for opening a URL or local file as a viewer tab. */
-function ActivityOpener({
-  onOpenWebTab,
-  onOpenLocalFile,
-  onOpenMarkdownNote,
-  autoFocus = false,
-}: {
-  onOpenWebTab: (url: string) => void;
-  onOpenLocalFile: (file: File) => void;
-  /** Offered on the "+" launcher tab; the Activity home has its own route to
-   *  the note (the chat header's note button). */
-  onOpenMarkdownNote?: () => void;
-  autoFocus?: boolean;
-}) {
-  const { t } = useTranslation();
-  const [urlInput, setUrlInput] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const submitUrl = useCallback(() => {
-    const trimmed = urlInput.trim();
-    if (!trimmed) return;
-    const href = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-    onOpenWebTab(href);
-    setUrlInput("");
-  }, [urlInput, onOpenWebTab]);
-
-  const handleFileSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) onOpenLocalFile(file);
-      e.target.value = "";
-    },
-    [onOpenLocalFile],
-  );
-
-  return (
-    <section>
-      <h2 className={ACTIVITY_LABEL}>{t("Open")}</h2>
-      <div className={`${ACTIVITY_TILE} p-1`}>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            submitUrl();
-          }}
-          className={`flex min-h-10 items-center gap-2.5 rounded-lg px-2.5 transition-colors ${ACTIVITY_ROW_HOVER} focus-within:bg-[var(--card)] focus-within:shadow-[0_0_0_1px_color-mix(in_srgb,var(--ring)_55%,transparent)]`}
-        >
-          <Globe
-            size={15}
-            strokeWidth={1.7}
-            aria-hidden="true"
-            className="shrink-0 text-[var(--muted-foreground)]"
-          />
-          <input
-            type="text"
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            aria-label={t("Open URL")}
-            placeholder={URL_PLACEHOLDER}
-            autoFocus={autoFocus}
-            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-[var(--foreground)] outline-none placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_75%,transparent)]"
-          />
-          <button
-            type="submit"
-            disabled={!urlInput.trim()}
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] transition-[opacity,background-color] hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] disabled:bg-transparent disabled:text-[var(--muted-foreground)] disabled:opacity-50"
-            aria-label={t("Open URL")}
-          >
-            <ArrowRight size={13} strokeWidth={2} />
-          </button>
-        </form>
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className={`group flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[12.5px] font-medium text-[var(--foreground)] transition-colors ${ACTIVITY_ROW_HOVER} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]`}
-        >
-          <FileUp size={15} strokeWidth={1.7} aria-hidden="true" className="shrink-0 text-[var(--muted-foreground)]" />
-          <span className="min-w-0 flex-1 truncate">{t("Open a local file")}</span>
-          <ChevronRight size={14} strokeWidth={1.7} aria-hidden="true" className="shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
-        </button>
-        {onOpenMarkdownNote ? (
-          <button
-            type="button"
-            onClick={onOpenMarkdownNote}
-            className={`group flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[12.5px] font-medium text-[var(--foreground)] transition-colors ${ACTIVITY_ROW_HOVER} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]`}
-          >
-            <NotebookPen size={15} strokeWidth={1.7} aria-hidden="true" className="shrink-0 text-[var(--muted-foreground)]" />
-            <span className="min-w-0 flex-1 truncate">{t("Markdown note")}</span>
-            <ChevronRight size={14} strokeWidth={1.7} aria-hidden="true" className="shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
-          </button>
-        ) : null}
-      </div>
-      <input
-        ref={fileInputRef}
-        type="file"
-        className="hidden"
-        onChange={handleFileSelect}
-        aria-hidden="true"
-        tabIndex={-1}
-      />
-    </section>
   );
 }
 
@@ -1383,15 +1546,38 @@ function WebTabBody({ url }: { url: string }) {
  * lives in the shared ``Geogebra`` component; this body just gives it
  * the right size and chrome inside the tab.
  */
-function GeogebraTabBody({ script }: { script: string }) {
+/** The applet is sized once, to the tab as it opens: GeoGebra rebuilds (and
+ *  loses the learner's drawing) whenever its size props change. */
+function GeogebraTabBody({
+  script,
+  editable = false,
+}: {
+  script: string;
+  editable?: boolean;
+}) {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    setSize({
+      width: Math.max(320, Math.floor(frame.clientWidth) - 24),
+      height: Math.max(360, Math.floor(frame.clientHeight) - 24),
+    });
+  }, []);
   return (
-    <div className="h-full w-full overflow-auto bg-[var(--card)] p-3">
-      <Geogebra
-        script={script}
-        width={560}
-        height={520}
-        className="m-0 border-0 bg-transparent"
-      />
+    <div ref={frameRef} className="h-full w-full overflow-auto bg-[var(--card)] p-3">
+      {size ? (
+        <Geogebra
+          script={script}
+          editable={editable}
+          width={size.width}
+          height={size.height}
+          className="m-0 border-0 bg-transparent"
+        />
+      ) : null}
     </div>
   );
 }

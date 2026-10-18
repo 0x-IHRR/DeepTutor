@@ -151,3 +151,14 @@ test("consultation selections travel as runtime fields, not capability config", 
     assert.throws(() => buildStartTurnInput({ content: "hi", capabilityConfig: { [key]: "id" } }), /must use its typed turn property/);
   }
 });
+
+test("a turn handed to someone names them as a typed property", () => {
+  const wire = buildStartTurnInput({ content: "Why does BM25 saturate?", answerBy: "partner:p1" });
+  assert.equal(wire.answer_by, "partner:p1");
+  assert.deepEqual(wire.config, {});
+  assert.equal(buildStartTurnInput({ content: "hi" }).answer_by, undefined);
+  assert.throws(
+    () => buildStartTurnInput({ content: "hi", capabilityConfig: { answer_by: "partner:p1" } }),
+    /must use its typed turn property/,
+  );
+});

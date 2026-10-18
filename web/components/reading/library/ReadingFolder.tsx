@@ -21,7 +21,6 @@ import { useTranslation } from "react-i18next";
 import Tooltip from "@/shared/ui/Tooltip";
 
 import { LearningSkeleton } from "@/components/learning/LearningShell";
-import { useChatWorkspaces } from "@/hooks/useChatWorkspaces";
 import {
   READING_HOME,
   readingCollectionRoute,
@@ -51,7 +50,6 @@ import { MaterialGlyph, materialDetail, relativeDate } from "./shared";
 export function ReadingFolderPage({ folderId }: { folderId: string }) {
   const { t, i18n } = useTranslation();
   const router = useRouter();
-  const { workspaces } = useChatWorkspaces();
   const [folder, setFolder] = useState<ReadingWorkspace | null>(null);
   const [sessions, setSessions] = useState<ReadingConversation[]>([]);
   const [error, setError] = useState("");
@@ -63,10 +61,6 @@ export function ReadingFolderPage({ folderId }: { folderId: string }) {
   // The URL names the workspace the folder is stored in; every request on
   // this page is scoped by it.
   const contentWorkspace = activeWorkspaceId();
-  const workspaceLabel =
-    workspaces.find((row) => row.workspace_id === contentWorkspace)
-      ?.display_name ||
-    (contentWorkspace ? contentWorkspace : t("Default workspace"));
 
   const refresh = useCallback(async () => {
     try {
@@ -159,7 +153,7 @@ export function ReadingFolderPage({ folderId }: { folderId: string }) {
     <FolderFrame>
       <nav
         aria-label={t("Breadcrumb")}
-        className="flex min-w-0 items-center gap-1 text-[12px] text-[var(--muted-foreground)]"
+        className="dt-section-back flex min-w-0 items-center gap-1 text-[12px] text-[var(--muted-foreground)]"
       >
         <Link
           href={scopedUrl(READING_HOME)}
@@ -168,15 +162,13 @@ export function ReadingFolderPage({ folderId }: { folderId: string }) {
           {t("Immersive Reading")}
         </Link>
         <ChevronRight size={12} className="shrink-0 opacity-60" />
-        <span className="shrink-0">{workspaceLabel}</span>
-        <ChevronRight size={12} className="shrink-0 opacity-60" />
         <span className="truncate text-[var(--foreground)]">{folder.title}</span>
       </nav>
 
       <div className="mt-5">
       <PageHeader
         title={folder.title}
-        description={<>{t("{{count}} files", { count: files.length })}{" · "}{t("Stored in {{workspace}}", { workspace: workspaceLabel })}</>}
+        description={t("{{count}} files", { count: files.length })}
         action={
         <div className="relative flex shrink-0 items-center gap-2">
           {files.length ? (
@@ -337,7 +329,6 @@ export function ReadingFolderPage({ folderId }: { folderId: string }) {
       {dialog === "edit" && (
         <FolderDialog
           collection={collection}
-          workspaceId={contentWorkspace}
           onClose={() => setDialog(null)}
           onSaved={(saved) => {
             setDialog(null);

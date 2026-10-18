@@ -5,6 +5,5 @@ export const modernTokens: UiLayoutTokens = {
     space: "navigation.resources",
     learning: "navigation.learning",
     defaultCapability: "Auto",
-    starterHeading: "navigation.ideasForYou",
   },
 };

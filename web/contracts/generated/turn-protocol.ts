@@ -17,6 +17,7 @@ export type ClientCommand =
   | UserInputCommand
   | CheckActiveTurnCommand
   | PingCommand;
+export type AnswerBy = string | null;
 export type Base64 = string | null;
 export type Filename = string | null;
 export type Id = string | null;
@@ -277,6 +278,7 @@ export interface TurnProtocolDocument {
  * via the `definition` "StartTurnCommand".
  */
 export interface StartTurnCommand {
+  answer_by?: AnswerBy;
   attachments?: Attachments;
   auto_route?: AutoRoute;
   book_references?: BookReferences;

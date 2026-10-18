@@ -9,7 +9,8 @@ import {
   readingCollectionRoute,
   practiceRoute,
 } from '@/lib/learning-routes'
-import { sessionRoute } from '@/lib/mastery-session'
+import { bookPageOf, masteryPathIdOf, readingWorkspaceIdOf, sessionRoute } from '@/lib/mastery-session'
+import { sessionWorkspaceId } from '@/lib/session-api'
 
 export type LearningKind = 'books' | 'mastery' | 'reading' | 'watching' | 'practice'
 export type Located<T> = T & { content_workspace_id?: string; content_workspace_name?: string }
@@ -27,7 +28,6 @@ export interface LearningActivity {
   href: string
   updatedAt: number
   createdAt: number
-  workspaceName?: string
   progress?: number
 }
 export function isWatchingSession(session: SessionSummary): boolean {
@@ -49,7 +49,6 @@ export function allLearningActivity(sources: LearningSources): LearningActivity[
       ),
       updatedAt: entry.updated_at || entry.created_at,
       createdAt: entry.created_at || entry.updated_at,
-      workspaceName: entry.content_workspace_name,
     })),
     ...sources.books.map(book => ({
       key: `book:${book.content_workspace_id || ''}:${book.id}`,
@@ -58,7 +57,6 @@ export function allLearningActivity(sources: LearningSources): LearningActivity[
       href: scopedUrl(bookRoute(book.id, null, ''), book.content_workspace_id || ''),
       updatedAt: book.updated_at,
       createdAt: book.created_at || book.updated_at,
-      workspaceName: book.content_workspace_name,
       progress: (book.reading?.percent ?? 0) / 100,
     })),
     ...sources.mastery
@@ -70,7 +68,6 @@ export function allLearningActivity(sources: LearningSources): LearningActivity[
         href: scopedUrl(masteryTopicRoute(topic.path_id, ''), topic.content_workspace_id || ''),
         updatedAt: topic.updated_at,
         createdAt: topic.metadata.created_at || topic.updated_at,
-        workspaceName: topic.content_workspace_name,
         progress: topic.map.counts.total ? topic.map.counts.mastered / topic.map.counts.total : 0,
       })),
     ...sources.reading.map(workspace => ({
@@ -83,7 +80,6 @@ export function allLearningActivity(sources: LearningSources): LearningActivity[
       ),
       updatedAt: workspace.updated_at,
       createdAt: workspace.created_at || workspace.updated_at,
-      workspaceName: workspace.content_workspace_name,
     })),
     ...sources.watching.filter(isWatchingSession).map(session => ({
       key: `session:${session.content_workspace_id || ''}:${session.session_id}`,
@@ -95,6 +91,42 @@ export function allLearningActivity(sources: LearningSources): LearningActivity[
     })),
   ].sort((a, b) => b.updatedAt - a.updatedAt || a.key.localeCompare(b.key))
 }
+/**
+ * The learning record a conversation was held in — its path, collection or
+ * book — keyed like ``allLearningActivity``, or null for one that names none.
+ * The same links its route follows, so a conversation is filed exactly where
+ * clicking it would take you.
+ */
+export function learningRecordKeyOf(session: SessionSummary): string | null {
+  const workspace = sessionWorkspaceId(session)
+  const pathId = masteryPathIdOf(session)
+  if (pathId) return `topic:${workspace}:${pathId}`
+  const collectionId = readingWorkspaceIdOf(session)
+  if (collectionId) return `reading:${workspace}:${collectionId}`
+  const book = bookPageOf(session)
+  if (book) return `book:${workspace}:${book.bookId}`
+  return null
+}
+
+/**
+ * Learning conversations filed under the records they belong to. A
+ * conversation whose record is not listed (an archived path, a deleted
+ * collection) stands on its own rather than disappearing with it; one that
+ * *is* a record (a legacy watching session) is not repeated.
+ */
+export function fileLearningSessions(records: readonly LearningActivity[], sessions: readonly SessionSummary[]) {
+  const keys = new Set(records.map(record => record.key))
+  const children = new Map<string, SessionSummary[]>()
+  const loose: SessionSummary[] = []
+  for (const session of sessions) {
+    if (keys.has(`session:${sessionWorkspaceId(session)}:${session.session_id}`)) continue
+    const key = learningRecordKeyOf(session)
+    if (key && keys.has(key)) children.set(key, [...(children.get(key) ?? []), session])
+    else loose.push(session)
+  }
+  return { children, loose }
+}
+
 export function recentLearningActivity(sources: LearningSources): LearningActivity[] {
   return allLearningActivity(sources).slice(0, 6)
 }

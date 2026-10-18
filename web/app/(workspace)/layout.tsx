@@ -1,3 +1,4 @@
+import CalendarRuntime from "@/features/calendar/components/CalendarRuntime";
 import TaskBoardRuntime from "@/components/tasks/TaskBoardRuntime";
 import WorkspaceSidebar from "@/components/sidebar/WorkspaceSidebar";
 import AppShell from "@/components/layout/AppShell";
@@ -15,10 +16,12 @@ export default function WorkspaceLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <TaskBoardRuntime>
-      <CapabilityAccessProvider>
-        <Suspense>
-          <WorkspaceRuntimeBoundary>
+    <CapabilityAccessProvider>
+      <Suspense>
+        <WorkspaceRuntimeBoundary>
+          <CalendarRuntime>
+          {/* Inside the boundary: each workspace has its own board. */}
+          <TaskBoardRuntime>
             <ChatRuntimeProvider>
               {/* Above the page on purpose: sending the first message navigates
             /chat → /chat/<id>, which remounts the page. The open document
@@ -29,9 +32,10 @@ export default function WorkspaceLayout({
                   </AppShell>
               </ReadingProvider>
             </ChatRuntimeProvider>
-          </WorkspaceRuntimeBoundary>
-        </Suspense>
-      </CapabilityAccessProvider>
-    </TaskBoardRuntime>
+          </TaskBoardRuntime>
+        </CalendarRuntime>
+        </WorkspaceRuntimeBoundary>
+      </Suspense>
+    </CapabilityAccessProvider>
   );
 }

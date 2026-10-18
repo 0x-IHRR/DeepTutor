@@ -1124,6 +1124,180 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/calendar/automations/{job_id}": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    readonly post?: never;
+    /** Cancel Automation */
+    readonly delete: operations["cancel_automation_api_calendar_automations__job_id__delete"];
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/calendar/calendars": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /** Calendars */
+    readonly get: operations["calendars_api_calendar_calendars_get"];
+    readonly put?: never;
+    /** Create Calendar */
+    readonly post: operations["create_calendar_api_calendar_calendars_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/calendar/calendars/{id}": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    readonly post?: never;
+    /** Delete Calendar */
+    readonly delete: operations["delete_calendar_api_calendar_calendars__id__delete"];
+    readonly options?: never;
+    readonly head?: never;
+    /** Update Calendar */
+    readonly patch: operations["update_calendar_api_calendar_calendars__id__patch"];
+    readonly trace?: never;
+  };
+  readonly "/api/calendar/events": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /** Events */
+    readonly get: operations["events_api_calendar_events_get"];
+    readonly put?: never;
+    /** Create Event */
+    readonly post: operations["create_event_api_calendar_events_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/calendar/events/{id}": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    readonly post?: never;
+    /** Delete Event */
+    readonly delete: operations["delete_event_api_calendar_events__id__delete"];
+    readonly options?: never;
+    readonly head?: never;
+    /** Update Event */
+    readonly patch: operations["update_event_api_calendar_events__id__patch"];
+    readonly trace?: never;
+  };
+  readonly "/api/calendar/layers": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /** Layers */
+    readonly get: operations["layers_api_calendar_layers_get"];
+    readonly put?: never;
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/calendar/search": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /** Search */
+    readonly get: operations["search_api_calendar_search_get"];
+    readonly put?: never;
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/calendar/stream": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /** Stream */
+    readonly get: operations["stream_api_calendar_stream_get"];
+    readonly put?: never;
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/calendar/task-blocks": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /** Task Blocks */
+    readonly get: operations["task_blocks_api_calendar_task_blocks_get"];
+    readonly put?: never;
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/calendar/undo/{token}": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /** Undo */
+    readonly post: operations["undo_api_calendar_undo__token__post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/capabilities/registered": {
     readonly parameters: {
       readonly query?: never;
@@ -1326,7 +1500,7 @@ export interface paths {
     };
     /**
      * Get Learning Index
-     * @description Read-only, account-wide entry points. Feature libraries remain scoped.
+     * @description Read-only entry points into the request's workspace.
      */
     readonly get: operations["get_learning_index_api_dashboard_learning_index_get"];
     readonly put?: never;
@@ -1346,7 +1520,7 @@ export interface paths {
     };
     /**
      * Get Learning Library
-     * @description Account-wide discovery. Items retain their source for scoped follow-up requests.
+     * @description The request's workspace library of one kind.
      */
     readonly get: operations["get_learning_library_api_dashboard_learning_library__kind__get"];
     readonly put?: never;
@@ -1383,7 +1557,7 @@ export interface paths {
     };
     /**
      * Get Source Library
-     * @description Read account-owned source indexes; preserve the workspace on every row.
+     * @description Source indexes of the request's workspace, for the topic and book pickers.
      */
     readonly get: operations["get_source_library_api_dashboard_source_library__kind__get"];
     readonly put?: never;
@@ -7743,7 +7917,15 @@ export interface paths {
       readonly path?: never;
       readonly cookie?: never;
     };
-    readonly get?: never;
+    /**
+     * Get Session Organization
+     * @description Title, status and preferences without the transcript.
+     *
+     *     The chat header reads this to show the conversation's own menu (pinned,
+     *     archived, filed under) — refetching the full message list for that would
+     *     cost a long conversation its whole history on every sidebar change.
+     */
+    readonly get: operations["get_session_organization_api_sessions__session_id__organization_get"];
     readonly put?: never;
     readonly post?: never;
     readonly delete?: never;
@@ -7818,6 +8000,26 @@ export interface paths {
     readonly put?: never;
     /** Restore Session */
     readonly post: operations["restore_session_api_sessions__session_id__restore_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/sessions/{session_id}/threads": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /**
+     * List Session Threads
+     * @description Little Tutor threads opened from this conversation, newest first.
+     */
+    readonly get: operations["list_session_threads_api_sessions__session_id__threads_get"];
+    readonly put?: never;
+    readonly post?: never;
     readonly delete?: never;
     readonly options?: never;
     readonly head?: never;
@@ -11566,6 +11768,35 @@ export interface components {
       /** Operation Id */
       readonly operation_id: string;
     };
+    /** AutomationRun */
+    readonly AutomationRun: {
+      /** At */
+      readonly at: string;
+      /**
+       * Enabled
+       * @default true
+       */
+      readonly enabled: boolean;
+      /** Every Seconds */
+      readonly every_seconds?: number | null;
+      /** Expr */
+      readonly expr?: string | null;
+      /** Id */
+      readonly id: string;
+      /** Job Id */
+      readonly job_id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      readonly kind: "at" | "every" | "cron";
+      /** Message */
+      readonly message: string;
+      /** Name */
+      readonly name: string;
+      /** Session Id */
+      readonly session_id?: string | null;
+    };
     /** BilingualPairingInfo */
     readonly BilingualPairingInfo: {
       /** Pairing Id */
@@ -11928,6 +12159,172 @@ export interface components {
        * @default true
        */
       readonly link: boolean;
+    };
+    /** CalendarEntry */
+    readonly CalendarEntry: {
+      /** Color */
+      readonly color: string;
+      /** Created At */
+      readonly created_at: string;
+      /** Id */
+      readonly id: string;
+      /** Is Default */
+      readonly is_default: boolean;
+      /** Name */
+      readonly name: string;
+      /** Position */
+      readonly position: number;
+      /** Updated At */
+      readonly updated_at: string;
+      /** Visible */
+      readonly visible: boolean;
+    };
+    /**
+     * CalendarEvent
+     * @description A stored master or override row.
+     */
+    readonly CalendarEvent: {
+      /** All Day */
+      readonly all_day: boolean;
+      /** Calendar Id */
+      readonly calendar_id: string;
+      /** Color */
+      readonly color: string | null;
+      /** Created At */
+      readonly created_at: string;
+      /** End */
+      readonly end: string;
+      /** Exdates */
+      readonly exdates: readonly string[];
+      /** Id */
+      readonly id: string;
+      /** Location */
+      readonly location: string;
+      /** Notes */
+      readonly notes: string;
+      /** Recurrence Id */
+      readonly recurrence_id: string | null;
+      /** Reminders */
+      readonly reminders: readonly number[];
+      /** Rrule */
+      readonly rrule: string | null;
+      /** Series Id */
+      readonly series_id: string | null;
+      /**
+       * Source
+       * @default user
+       * @enum {string}
+       */
+      readonly source: "user" | "dito" | "import";
+      /** Start */
+      readonly start: string;
+      /** Task Id */
+      readonly task_id: string | null;
+      /** Task Workspace Id */
+      readonly task_workspace_id: string | null;
+      /** Title */
+      readonly title: string;
+      /** Tzid */
+      readonly tzid: string;
+      /** Updated At */
+      readonly updated_at: string;
+    };
+    /** CalendarEventResponse */
+    readonly CalendarEventResponse: {
+      readonly event: components["schemas"]["CalendarEvent"];
+      /** Revision */
+      readonly revision: number;
+    };
+    /** CalendarLayers */
+    readonly CalendarLayers: {
+      /** Automations */
+      readonly automations?: readonly components["schemas"]["AutomationRun"][];
+      /** Footprints */
+      readonly footprints?: readonly components["schemas"]["FootprintDay"][];
+      /** Reviews */
+      readonly reviews?: readonly components["schemas"]["ReviewDay"][];
+      /** Workspace Id */
+      readonly workspace_id: string;
+    };
+    /** CalendarList */
+    readonly CalendarList: {
+      /** Calendars */
+      readonly calendars: readonly components["schemas"]["CalendarEntry"][];
+      /** Revision */
+      readonly revision: number;
+    };
+    /** CalendarOk */
+    readonly CalendarOk: {
+      /**
+       * Ok
+       * @default true
+       */
+      readonly ok: boolean;
+    };
+    /** CalendarResponse */
+    readonly CalendarResponse: {
+      readonly calendar: components["schemas"]["CalendarEntry"];
+      /** Revision */
+      readonly revision: number;
+    };
+    /** CalendarRevision */
+    readonly CalendarRevision: {
+      /** Revision */
+      readonly revision: number;
+    };
+    /** CalendarSearchHit */
+    readonly CalendarSearchHit: {
+      /** All Day */
+      readonly all_day: boolean;
+      /** Calendar Id */
+      readonly calendar_id: string;
+      /** Color */
+      readonly color: string | null;
+      /** Created At */
+      readonly created_at: string;
+      /** End */
+      readonly end: string;
+      /** Exdates */
+      readonly exdates: readonly string[];
+      /** Id */
+      readonly id: string;
+      /** Location */
+      readonly location: string;
+      /** Next Start */
+      readonly next_start?: string | null;
+      /** Notes */
+      readonly notes: string;
+      /** Recurrence Id */
+      readonly recurrence_id: string | null;
+      /** Reminders */
+      readonly reminders: readonly number[];
+      /** Rrule */
+      readonly rrule: string | null;
+      /** Series Id */
+      readonly series_id: string | null;
+      /**
+       * Source
+       * @default user
+       * @enum {string}
+       */
+      readonly source: "user" | "dito" | "import";
+      /** Start */
+      readonly start: string;
+      /** Task Id */
+      readonly task_id: string | null;
+      /** Task Workspace Id */
+      readonly task_workspace_id: string | null;
+      /** Title */
+      readonly title: string;
+      /** Tzid */
+      readonly tzid: string;
+      /** Updated At */
+      readonly updated_at: string;
+    };
+    /** CalendarSearchResponse */
+    readonly CalendarSearchResponse: {
+      /** Events */
+      readonly events: readonly components["schemas"]["CalendarSearchHit"][];
     };
     /** CatalogPayload */
     readonly CatalogPayload: {
@@ -12414,8 +12811,17 @@ export interface components {
        */
       readonly user_intent: string;
     };
+    /** CreateCalendar */
+    readonly CreateCalendar: {
+      /** Color */
+      readonly color: string;
+      /** Name */
+      readonly name: string;
+    };
     /** CreateCard */
     readonly CreateCard: {
+      /** Due Date */
+      readonly due_date?: string | null;
       /**
        * Note
        * @default
@@ -13104,6 +13510,97 @@ export interface components {
        */
       readonly retryable: boolean;
     };
+    /**
+     * EventInput
+     * @description A new event, or the merged result of a patch before it is stored.
+     */
+    readonly EventInput: {
+      /**
+       * All Day
+       * @default false
+       */
+      readonly all_day: boolean;
+      /** Calendar Id */
+      readonly calendar_id?: string | null;
+      /** Color */
+      readonly color?: string | null;
+      /** End */
+      readonly end: string;
+      /**
+       * Location
+       * @default
+       */
+      readonly location: string;
+      /**
+       * Notes
+       * @default
+       */
+      readonly notes: string;
+      /** Reminders */
+      readonly reminders?: readonly number[];
+      /** Rrule */
+      readonly rrule?: string | null;
+      /** Start */
+      readonly start: string;
+      /** Task Id */
+      readonly task_id?: string | null;
+      /** Task Workspace Id */
+      readonly task_workspace_id?: string | null;
+      /**
+       * Title
+       * @default
+       */
+      readonly title: string;
+      /**
+       * Tzid
+       * @default UTC
+       */
+      readonly tzid: string;
+    };
+    /**
+     * EventPatch
+     * @description Every field optional; explicit null clears rrule/color/task links only.
+     */
+    readonly EventPatch: {
+      /** All Day */
+      readonly all_day?: boolean | null;
+      /** Calendar Id */
+      readonly calendar_id?: string | null;
+      /** Color */
+      readonly color?: string | null;
+      /** End */
+      readonly end?: string | null;
+      /** Location */
+      readonly location?: string | null;
+      /** Notes */
+      readonly notes?: string | null;
+      /** Reminders */
+      readonly reminders?: readonly number[] | null;
+      /** Rrule */
+      readonly rrule?: string | null;
+      /** Start */
+      readonly start?: string | null;
+      /** Task Id */
+      readonly task_id?: string | null;
+      /** Task Workspace Id */
+      readonly task_workspace_id?: string | null;
+      /** Title */
+      readonly title?: string | null;
+      /** Tzid */
+      readonly tzid?: string | null;
+    };
+    /** EventPatchRequest */
+    readonly EventPatchRequest: {
+      readonly changes: components["schemas"]["EventPatch"];
+      /** Occurrence */
+      readonly occurrence?: string | null;
+      /**
+       * Scope
+       * @default all
+       * @enum {string}
+       */
+      readonly scope: "this" | "following" | "all";
+    };
     /** ExportDocxRequest */
     readonly ExportDocxRequest: {
       /**
@@ -13141,6 +13638,35 @@ export interface components {
        * @enum {string}
        */
       readonly service: "llm" | "task";
+    };
+    /** FootprintDay */
+    readonly FootprintDay: {
+      /** Date */
+      readonly date: string;
+      /**
+       * Mastery Evidence
+       * @default 0
+       */
+      readonly mastery_evidence: number;
+      /**
+       * Practice Reviews
+       * @default 0
+       */
+      readonly practice_reviews: number;
+      /**
+       * Session Count
+       * @default 0
+       */
+      readonly session_count: number;
+      /** Sessions */
+      readonly sessions?: readonly components["schemas"]["FootprintSession"][];
+    };
+    /** FootprintSession */
+    readonly FootprintSession: {
+      /** Id */
+      readonly id: string;
+      /** Title */
+      readonly title: string;
     };
     /** GenerateFromNotebookRequest */
     readonly GenerateFromNotebookRequest: {
@@ -14766,6 +15292,63 @@ export interface components {
       /** Record Ids */
       readonly record_ids?: readonly string[];
     };
+    /**
+     * Occurrence
+     * @description One rendered instance of a stored event.
+     */
+    readonly Occurrence: {
+      /** All Day */
+      readonly all_day: boolean;
+      /** Calendar Id */
+      readonly calendar_id: string;
+      /** Color */
+      readonly color: string | null;
+      /** End */
+      readonly end: string;
+      /** Event Id */
+      readonly event_id: string;
+      /** Id */
+      readonly id: string;
+      /** Location */
+      readonly location: string;
+      /** Notes */
+      readonly notes: string;
+      /** Occurrence */
+      readonly occurrence: string;
+      /** Recurring */
+      readonly recurring: boolean;
+      /** Reminder Times */
+      readonly reminder_times?: readonly string[];
+      /** Reminders */
+      readonly reminders: readonly number[];
+      /** Rrule */
+      readonly rrule: string | null;
+      /** Series Id */
+      readonly series_id: string | null;
+      /**
+       * Source
+       * @default user
+       * @enum {string}
+       */
+      readonly source: "user" | "dito" | "import";
+      /** Start */
+      readonly start: string;
+      /** Task Id */
+      readonly task_id: string | null;
+      /** Task Workspace Id */
+      readonly task_workspace_id: string | null;
+      /** Title */
+      readonly title: string;
+      /** Tzid */
+      readonly tzid: string;
+    };
+    /** OccurrenceList */
+    readonly OccurrenceList: {
+      /** Occurrences */
+      readonly occurrences: readonly components["schemas"]["Occurrence"][];
+      /** Revision */
+      readonly revision: number;
+    };
     /** OrganizeNotesRequest */
     readonly OrganizeNotesRequest: {
       /** Material Ids */
@@ -15003,8 +15586,6 @@ export interface components {
       readonly timezone: string;
       /** Total */
       readonly total: number;
-      /** Unavailable Workspaces */
-      readonly unavailable_workspaces?: readonly string[];
     };
     /** ProbeFolderRequest */
     readonly ProbeFolderRequest: {
@@ -15580,6 +16161,32 @@ export interface components {
       readonly card_id: string;
       /** Remembered */
       readonly remembered: boolean;
+    };
+    /** ReviewDay */
+    readonly ReviewDay: {
+      /** Date */
+      readonly date: string;
+      /**
+       * Mastery
+       * @default 0
+       */
+      readonly mastery: number;
+      /** Paths */
+      readonly paths?: readonly components["schemas"]["ReviewPathCount"][];
+      /**
+       * Practice
+       * @default 0
+       */
+      readonly practice: number;
+    };
+    /** ReviewPathCount */
+    readonly ReviewPathCount: {
+      /** Count */
+      readonly count: number;
+      /** Id */
+      readonly id: string;
+      /** Title */
+      readonly title: string;
     };
     /** ReviewRequest */
     readonly ReviewRequest: {
@@ -16197,6 +16804,8 @@ export interface components {
       readonly archived: boolean;
       /** Created At */
       readonly created_at: string;
+      /** Due Date */
+      readonly due_date?: string | null;
       /** Id */
       readonly id: string;
       /**
@@ -16491,6 +17100,11 @@ export interface components {
      *     clients continue to work while receiving a deprecation warning.
      */
     readonly TurnRequest: {
+      /**
+       * Answer By
+       * @default null
+       */
+      readonly answer_by: string | null;
       /** Attachments */
       readonly attachments?: readonly components["schemas"]["OutgoingAttachment"][];
       /**
@@ -16824,10 +17438,23 @@ export interface components {
       /** Title */
       readonly title?: string | null;
     };
+    /** UpdateCalendar */
+    readonly UpdateCalendar: {
+      /** Color */
+      readonly color?: string | null;
+      /** Name */
+      readonly name?: string | null;
+      /** Position */
+      readonly position?: number | null;
+      /** Visible */
+      readonly visible?: boolean | null;
+    };
     /** UpdateCard */
     readonly UpdateCard: {
       /** Archived */
       readonly archived?: boolean | null;
+      /** Due Date */
+      readonly due_date?: string | null;
       /** Note */
       readonly note?: string | null;
       /** Status */
@@ -17603,6 +18230,7 @@ export type SchemaAuthStatusResponse =
   components["schemas"]["AuthStatusResponse"];
 export type SchemaAutoMarkRequest = components["schemas"]["AutoMarkRequest"];
 export type SchemaAutoMarkResponse = components["schemas"]["AutoMarkResponse"];
+export type SchemaAutomationRun = components["schemas"]["AutomationRun"];
 export type SchemaBilingualPairingInfo =
   components["schemas"]["BilingualPairingInfo"];
 export type SchemaBodyAdminImportUsersApiAuthUsersImportPost =
@@ -17642,6 +18270,19 @@ export type SchemaBuiltinToolPayload =
   components["schemas"]["BuiltinToolPayload"];
 export type SchemaBulkCategoryRequest =
   components["schemas"]["BulkCategoryRequest"];
+export type SchemaCalendarEntry = components["schemas"]["CalendarEntry"];
+export type SchemaCalendarEvent = components["schemas"]["CalendarEvent"];
+export type SchemaCalendarEventResponse =
+  components["schemas"]["CalendarEventResponse"];
+export type SchemaCalendarLayers = components["schemas"]["CalendarLayers"];
+export type SchemaCalendarList = components["schemas"]["CalendarList"];
+export type SchemaCalendarOk = components["schemas"]["CalendarOk"];
+export type SchemaCalendarResponse = components["schemas"]["CalendarResponse"];
+export type SchemaCalendarRevision = components["schemas"]["CalendarRevision"];
+export type SchemaCalendarSearchHit =
+  components["schemas"]["CalendarSearchHit"];
+export type SchemaCalendarSearchResponse =
+  components["schemas"]["CalendarSearchResponse"];
 export type SchemaCatalogPayload = components["schemas"]["CatalogPayload"];
 export type SchemaCatalogServicePayload =
   components["schemas"]["CatalogServicePayload"];
@@ -17703,6 +18344,7 @@ export type SchemaConnectWeKnoraRequest =
   components["schemas"]["ConnectWeKnoraRequest"];
 export type SchemaCreateBookRequest =
   components["schemas"]["CreateBookRequest"];
+export type SchemaCreateCalendar = components["schemas"]["CreateCalendar"];
 export type SchemaCreateCard = components["schemas"]["CreateCard"];
 export type SchemaCreateCourseRequest =
   components["schemas"]["CreateCourseRequest"];
@@ -17779,10 +18421,16 @@ export type SchemaEntryUpdateRequest =
 export type SchemaEpubPairingRequest =
   components["schemas"]["EpubPairingRequest"];
 export type SchemaErrorEnvelope = components["schemas"]["ErrorEnvelope"];
+export type SchemaEventInput = components["schemas"]["EventInput"];
+export type SchemaEventPatch = components["schemas"]["EventPatch"];
+export type SchemaEventPatchRequest =
+  components["schemas"]["EventPatchRequest"];
 export type SchemaExportDocxRequest =
   components["schemas"]["ExportDocxRequest"];
 export type SchemaFetchModelsPayload =
   components["schemas"]["FetchModelsPayload"];
+export type SchemaFootprintDay = components["schemas"]["FootprintDay"];
+export type SchemaFootprintSession = components["schemas"]["FootprintSession"];
 export type SchemaGenerateFromNotebookRequest =
   components["schemas"]["GenerateFromNotebookRequest"];
 export type SchemaGenerateFromReadingRequest =
@@ -17912,6 +18560,8 @@ export type SchemaNotebookRecordInput =
   components["schemas"]["NotebookRecordInput"];
 export type SchemaNotebookReference =
   components["schemas"]["NotebookReference"];
+export type SchemaOccurrence = components["schemas"]["Occurrence"];
+export type SchemaOccurrenceList = components["schemas"]["OccurrenceList"];
 export type SchemaOrganizeNotesRequest =
   components["schemas"]["OrganizeNotesRequest"];
 export type SchemaOutgoingAttachment =
@@ -18001,6 +18651,8 @@ export type SchemaResumeBookRequest =
   components["schemas"]["ResumeBookRequest"];
 export type SchemaReviewCardRequest =
   components["schemas"]["ReviewCardRequest"];
+export type SchemaReviewDay = components["schemas"]["ReviewDay"];
+export type SchemaReviewPathCount = components["schemas"]["ReviewPathCount"];
 export type SchemaReviewRequest = components["schemas"]["ReviewRequest"];
 export type SchemaReviewSettingsRequest =
   components["schemas"]["ReviewSettingsRequest"];
@@ -18104,6 +18756,7 @@ export type SchemaUiSettingsUpdate = components["schemas"]["UISettingsUpdate"];
 export type SchemaUnitText = components["schemas"]["UnitText"];
 export type SchemaUpdateBlockRequest =
   components["schemas"]["UpdateBlockRequest"];
+export type SchemaUpdateCalendar = components["schemas"]["UpdateCalendar"];
 export type SchemaUpdateCard = components["schemas"]["UpdateCard"];
 export type SchemaUpdateCourseRequest =
   components["schemas"]["UpdateCourseRequest"];
@@ -20556,6 +21209,512 @@ export interface operations {
           readonly "application/json": {
             readonly [key: string]: unknown;
           };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly cancel_automation_api_calendar_automations__job_id__delete: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly job_id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["CalendarOk"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly calendars_api_calendar_calendars_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["CalendarList"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly create_calendar_api_calendar_calendars_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["CreateCalendar"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 201: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["CalendarResponse"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly delete_calendar_api_calendar_calendars__id__delete: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["CalendarRevision"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly update_calendar_api_calendar_calendars__id__patch: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["UpdateCalendar"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["CalendarResponse"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly events_api_calendar_events_get: {
+    readonly parameters: {
+      readonly query: {
+        readonly end: string;
+        readonly start: string;
+        readonly tz?: string;
+      };
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["OccurrenceList"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly create_event_api_calendar_events_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["EventInput"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 201: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["CalendarEventResponse"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly delete_event_api_calendar_events__id__delete: {
+    readonly parameters: {
+      readonly query?: {
+        readonly occurrence?: string | null;
+        readonly scope?: "this" | "following" | "all";
+      };
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly update_event_api_calendar_events__id__patch: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["EventPatchRequest"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["CalendarRevision"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly layers_api_calendar_layers_get: {
+    readonly parameters: {
+      readonly query: {
+        readonly end: string;
+        readonly start: string;
+        readonly tz?: string;
+      };
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["CalendarLayers"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly search_api_calendar_search_get: {
+    readonly parameters: {
+      readonly query: {
+        readonly limit?: number;
+        readonly q: string;
+      };
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["CalendarSearchResponse"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly stream_api_calendar_stream_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly task_blocks_api_calendar_task_blocks_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: number;
+          };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly undo_api_calendar_undo__token__post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly token: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["CalendarRevision"];
         };
       };
       /** @description Validation Error */
@@ -32640,7 +33799,6 @@ export interface operations {
   readonly practice_analytics_api_question_notebook_practice_analytics_get: {
     readonly parameters: {
       readonly query?: {
-        readonly all_workspaces?: boolean;
         readonly course_id?: string;
         readonly days?: number;
         readonly timezone?: string;
@@ -32900,7 +34058,6 @@ export interface operations {
   readonly queue_api_question_notebook_practice_queue_get: {
     readonly parameters: {
       readonly query?: {
-        readonly all_workspaces?: boolean;
         readonly category_id?: number | null;
         readonly course_id?: string;
         readonly limit?: number;
@@ -32939,7 +34096,6 @@ export interface operations {
   readonly summary_api_question_notebook_practice_summary_get: {
     readonly parameters: {
       readonly query?: {
-        readonly all_workspaces?: boolean;
         readonly course_id?: string;
         readonly timezone?: string;
       };
@@ -35461,6 +36617,41 @@ export interface operations {
       };
     };
   };
+  readonly get_session_organization_api_sessions__session_id__organization_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly session_id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   readonly update_session_organization_api_sessions__session_id__organization_patch: {
     readonly parameters: {
       readonly query?: never;
@@ -35648,6 +36839,41 @@ export interface operations {
       };
     };
   };
+  readonly list_session_threads_api_sessions__session_id__threads_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly session_id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   readonly list_recycle_bin_api_sessions_recycle_bin_get: {
     readonly parameters: {
       readonly query?: {
@@ -35687,7 +36913,6 @@ export interface operations {
   readonly search_sessions_api_sessions_search_get: {
     readonly parameters: {
       readonly query: {
-        readonly all_workspaces?: boolean;
         readonly limit?: number;
         readonly offset?: number;
         readonly q: string;

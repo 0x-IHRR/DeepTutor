@@ -13,8 +13,8 @@ import {
 } from "lucide-react";
 import {
   DASHBOARD_GROUPS,
-  ALL_ITEMS,
   visibleGroups,
+  type DashboardGroup,
   type DashboardItem,
   type Lang,
   type DashKey,
@@ -35,10 +35,15 @@ import { scopedUrl } from "@/lib/workspace-scope";
 export default function SpaceDashboard({
   title,
   description,
+  icon = Library,
+  groups: shelves = DASHBOARD_GROUPS,
   onNavigate,
 }: {
   title?: string;
   description?: string;
+  icon?: typeof Library;
+  /** The shelves this hub opens onto; the workspace's materials by default. */
+  groups?: DashboardGroup[];
   onNavigate?: (href: string) => void;
 } = {}) {
   const { i18n } = useTranslation();
@@ -50,15 +55,15 @@ export default function SpaceDashboard({
 
   const capabilityAvailable = useCapabilityFilter();
   const groups = useMemo(
-    () => visibleGroups(DASHBOARD_GROUPS, capabilityAvailable),
-    [capabilityAvailable]
+    () => visibleGroups(shelves, capabilityAvailable),
+    [shelves, capabilityAvailable]
   );
 
   useEffect(() => {
     let cancelled = false;
     // Each tile loads independently so one slow/failed endpoint never blanks
     // the whole dashboard.
-    for (const item of ALL_ITEMS) {
+    for (const item of shelves.flatMap(group => group.items)) {
       if (!item.load) continue;
       item
         .load()
@@ -72,12 +77,12 @@ export default function SpaceDashboard({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [shelves]);
 
   return (
     <div>
       <PageHeader
-        icon={Library}
+        icon={icon}
         title={title ?? spaceLabel}
         description={description ?? tr({
             zh: "你的对话、智能体、笔记与题目，集中在一处 —— 从这里进入。",

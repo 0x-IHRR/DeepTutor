@@ -19,6 +19,7 @@ const RUNTIME_ONLY_CONFIG_KEYS = new Set([
   "subagent_consult_budget",
   "consult_partner_id",
   "partner_discussion_group_id",
+  "answer_by",
 ]);
 
 function invalid(message: string): never {
@@ -119,6 +120,7 @@ export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
     subagent_consult_budget: input.subagentConsultBudget ?? null,
     ...(input.consultPartnerId ? { consult_partner_id: input.consultPartnerId } : {}),
     ...(input.partnerDiscussionGroupId ? { partner_discussion_group_id: input.partnerDiscussionGroupId } : {}),
+    ...(input.answerBy ? { answer_by: input.answerBy } : {}),
     auto_route: input.autoRoute ?? null,
     ...(input.capabilityOnce ? { capability_once: true } : {}),
   });

@@ -23,6 +23,27 @@ test("selection tutor keys are stable per passage and parent session", () => {
   assert.notEqual(a, selectionTutorKey("wait() blocks", "session-a", 42));
 });
 
+test("a side chat sends only its parent and the branch tip it was opened on", () => {
+  assert.deepEqual(
+    buildSelectionTutorConfig({
+      scope: "conversation",
+      selectedText: "",
+      parentSessionId: "parent-1",
+      sourceMessageId: 9,
+      sourceMessageText: "",
+      sourceMessageRole: "assistant",
+      parentTitle: "Fork and exec",
+    }),
+    {
+      selection_tutor_context: {
+        scope: "conversation",
+        parent_session_id: "parent-1",
+        source_message_id: 9,
+      },
+    },
+  );
+});
+
 test("builds selected text context with its containing message", () => {
   assert.deepEqual(
     buildSelectionTutorConfig({

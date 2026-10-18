@@ -300,6 +300,7 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
     assert detail["messages"][1]["content"] == "Hello Frank"
     assert detail["preferences"] == {
         "capability": "chat",
+        "answer_by": "",
         "tools": [],
         "knowledge_bases": [],
         "language": "en",
@@ -628,6 +629,85 @@ async def test_turn_runtime_session_persona_persists_falls_back_and_clears(
     assert cleared_snapshot["enabledTools"] == []
     assert cleared_snapshot["knowledgeBases"] == []
     assert cleared_snapshot["memoryReferences"] == []
+
+
+@pytest.mark.asyncio
+async def test_turn_runtime_keeps_who_answers_on_the_session(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """The answerer is restated every turn and the latest is stored, so a
+    reloaded conversation stays with whoever it was handed to."""
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    seen: list[str | None] = []
+
+    class FakeContextBuilder:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def build(self, **_kwargs):
+            return SimpleNamespace(
+                conversation_history=[],
+                conversation_summary="",
+                context_text="",
+                token_count=0,
+                budget=0,
+            )
+
+    class FakeOrchestrator:
+        async def handle(self, context):
+            seen.append(context.runtime.answer_by)
+            yield StreamEvent(
+                type=StreamEventType.CONTENT,
+                source="chat",
+                stage="responding",
+                content="ok",
+                metadata={"call_kind": "llm_final_response"},
+            )
+            yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+    monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        "deeptutor.services.session.context_builder.ContextBuilder", FakeContextBuilder
+    )
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr(
+        "deeptutor.services.memory.get_memory_store",
+        lambda: SimpleNamespace(read_l3_concat=lambda: "", emit=_noop_async),
+    )
+    monkeypatch.setattr("deeptutor.services.skill.get_skill_service", _fake_skill_service)
+    monkeypatch.setattr("deeptutor.services.persona.get_persona_service", _fake_persona_service)
+
+    async def run_turn(session_id, extra):
+        session, turn = await runtime.start_turn(
+            {
+                "type": "start_turn",
+                "content": "hi",
+                "session_id": session_id,
+                "capability": None,
+                "tools": [],
+                "knowledge_bases": [],
+                "attachments": [],
+                "language": "en",
+                "config": {},
+                **extra,
+            }
+        )
+        async for _event in runtime.subscribe_turn(turn["id"], after_seq=0):
+            pass
+        return session
+
+    session = await run_turn(None, {"answer_by": "partner:paul"})
+    detail = await store.get_session_with_messages(session["id"])
+    assert detail["preferences"]["answer_by"] == "partner:paul"
+    assert detail["messages"][0]["metadata"]["request_snapshot"]["answerBy"] == "partner:paul"
+
+    # Handed back: a turn without an answerer is DeepTutor's, and says so.
+    await run_turn(session["id"], {})
+    detail = await store.get_session_with_messages(session["id"])
+    assert detail["preferences"]["answer_by"] == ""
+    assert seen == ["partner:paul", None]
 
 
 @pytest.mark.asyncio

@@ -206,7 +206,7 @@ it("switches metrics and charts without losing course scope and exposes exact da
   expect(replace.mock.calls.at(-1)?.[0]).toContain("stats_chart=bars");
   await userEvent.click(screen.getByText("View daily data"));
   expect(within(screen.getByRole("table")).getByText("2026-09-18")).toBeVisible();
-  expect(api.getPracticeAnalytics).toHaveBeenCalledWith("course-a", 30, undefined);
+  expect(api.getPracticeAnalytics).toHaveBeenCalledWith("course-a", 30);
 });
 
 it("shows an error and permits retry instead of presenting failed data as zero", async () => {

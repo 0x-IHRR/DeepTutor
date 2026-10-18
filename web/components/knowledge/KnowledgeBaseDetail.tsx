@@ -222,7 +222,7 @@ export default function KnowledgeBaseDetail({
                 <button
                   type="button"
                   onClick={onBack}
-                  className="mb-1.5 inline-flex items-center gap-1 text-[11.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                  className="dt-section-back mb-1.5 inline-flex items-center gap-1 text-[11.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" />
                   {t("Knowledge bases")}

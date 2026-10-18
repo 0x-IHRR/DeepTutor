@@ -109,3 +109,56 @@ async def test_course_delete_unclassifies_every_session_before_removing_course(
     assert all(not row["preferences"].get("course_id") for row in store.rows.values())
     with pytest.raises(CourseNotFoundError):
         service.get(course.id)
+
+
+@pytest.mark.asyncio
+async def test_threads_lists_only_this_conversations_tutor_threads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _ReorderingStore(
+        [
+            {"session_id": "root", "updated_at": 10, "preferences": {}},
+            {
+                "session_id": "older-thread",
+                "updated_at": 4,
+                "preferences": {"parent_session_id": "root", "session_kind": "selection_tutor"},
+            },
+            {
+                "session_id": "newer-thread",
+                "updated_at": 8,
+                "preferences": {"parent_session_id": "root", "session_kind": "selection_tutor"},
+            },
+            {
+                "session_id": "other-parent",
+                "updated_at": 9,
+                "preferences": {
+                    "parent_session_id": "elsewhere",
+                    "session_kind": "selection_tutor",
+                },
+            },
+            {
+                "session_id": "filed-child",
+                "updated_at": 7,
+                "preferences": {"parent_session_id": "root", "session_kind": "chat"},
+            },
+        ]
+    )
+    monkeypatch.setattr(sessions_router, "get_session_store", lambda: store)
+
+    result = await sessions_router.list_session_threads("root")
+
+    assert [row["session_id"] for row in result["threads"]] == ["newer-thread", "older-thread"]
+
+
+@pytest.mark.asyncio
+async def test_organization_read_skips_the_transcript(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = _ReorderingStore(
+        [{"session_id": "root", "updated_at": 1, "preferences": {"pinned": True}}]
+    )
+    monkeypatch.setattr(sessions_router, "get_session_store", lambda: store)
+
+    result = await sessions_router.get_session_organization("root")
+
+    assert result["session"]["preferences"] == {"pinned": True}
+    with pytest.raises(sessions_router.HTTPException):
+        await sessions_router.get_session_organization("missing")

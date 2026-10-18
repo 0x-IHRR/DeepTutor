@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Table2, Columns3, List, Search, Plus } from 'lucide-react'
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspaceId'
 import {
   getTaskBoard,
   createTaskCard,
@@ -20,6 +21,7 @@ export default function NoteTaskView({
   onViewChange: (view: string) => void
 }) {
   const { t } = useTranslation()
+  const workspaceId = useActiveWorkspaceId()
   const [cards, setCards] = useState<TaskCard[]>([])
   const [query, setQuery] = useState('')
   const [title, setTitle] = useState('')
@@ -27,17 +29,19 @@ export default function NoteTaskView({
   const [error, setError] = useState('')
   useEffect(() => {
     const controller = new AbortController()
-    void getTaskBoard(controller.signal)
+    void getTaskBoard(controller.signal, workspaceId || '')
       .then(b => setCards(b.cards))
       .catch(e => {
         if (!controller.signal.aborted) setError(String(e))
       })
-    const off = subscribeTaskBoardChanges(b => setCards(b.cards))
+    const off = subscribeTaskBoardChanges((b, scope) => {
+      if (scope === (workspaceId || '')) setCards(b.cards)
+    })
     return () => {
       controller.abort()
       off()
     }
-  }, [])
+  }, [workspaceId])
   const visible = cards.filter(
     c => !c.archived && c.title.toLowerCase().includes(query.toLowerCase())
   )
@@ -113,6 +117,7 @@ export default function NoteTaskView({
                   <article key={c.id}>
                     <p>{c.title}</p>
                     {status(c)}
+                    {c.due_date && <small>{c.due_date}</small>}
                   </article>
                 ))}
             </div>
@@ -129,6 +134,7 @@ export default function NoteTaskView({
                 onChange={e => void update(c, { status: e.target.checked ? 'done' : 'todo' })}
               />
               <span>{c.title}</span>
+              <small>{c.due_date}</small>
             </label>
           ))}
         </div>
@@ -139,6 +145,7 @@ export default function NoteTaskView({
               <tr>
                 <th>{t('Task')}</th>
                 <th>{t('Status')}</th>
+                <th>{t('Due date')}</th>
               </tr>
             </thead>
             <tbody>
@@ -146,6 +153,15 @@ export default function NoteTaskView({
                 <tr key={c.id}>
                   <td>{c.title}</td>
                   <td>{status(c)}</td>
+                  <td>
+                    <input
+                      type="date"
+                      disabled={busy}
+                      aria-label={`${t('Due date')}: ${c.title}`}
+                      value={c.due_date || ''}
+                      onChange={e => void update(c, { due_date: e.target.value || null })}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>

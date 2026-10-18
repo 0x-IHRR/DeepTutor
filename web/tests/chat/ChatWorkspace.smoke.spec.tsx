@@ -29,6 +29,7 @@ const fixture = vi.hoisted(() => ({
     setKBs: vi.fn(),
     setLLMSelection: vi.fn(),
     setPersonaSelection: vi.fn(),
+    setAnswerBy: vi.fn(),
     setResourceSelection: vi.fn(),
     setReplyLanguageOverride: vi.fn(() => Promise.resolve()),
     sendMessage: vi.fn(),
@@ -142,6 +143,12 @@ vi.mock('@/lib/courses-api', () => ({
 vi.mock('@/lib/session-api', () => ({
   fetchSessionAskHint: vi.fn(async () => ''),
   updateSessionOrganization: vi.fn(async () => ({})),
+  getSessionOrganization: vi.fn(async (sessionId: string) => ({
+    session_id: sessionId,
+    title: '',
+    preferences: {},
+  })),
+  deleteSession: vi.fn(async () => undefined),
 }))
 
 vi.mock('@/features/knowledge/api/catalog', () => ({
@@ -241,6 +248,7 @@ function emptyChatState(): ChatState {
     workspaceId: null,
     courseId: '',
     personaSelection: '',
+    answerBy: null,
     resourceSelection: { skills: [], mcp: [] },
     messages: [],
     isStreaming: false,
@@ -306,9 +314,9 @@ describe('ChatWorkspace smoke', () => {
     expect(screen.getByTestId('composer')).toHaveAttribute('data-streaming', 'false')
     expect(screen.queryByTestId('message-list')).toBeNull()
 
-    // Header affordances exist; export actions stay disabled with no turns.
-    expect(screen.getByRole('button', { name: 'Download Markdown' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Save to Notebook' })).toBeDisabled()
+    // Header affordances exist; the conversation's own menu (save, export,
+    // organize) waits for there to be a conversation.
+    expect(screen.getByRole('button', { name: 'Conversation actions' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Activity' })).toBeEnabled()
 
     // The active session is published to the app shell for the sidebar.

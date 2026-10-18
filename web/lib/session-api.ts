@@ -93,6 +93,9 @@ export interface SessionPreferences {
   mastery_session_mode?: string;
   /** Session-level persona preference; "" / absent = Default (no persona). */
   persona?: string;
+  /** Who the conversation is handed to — `partner:<id>` / `subagent:<name>`;
+   *  "" / absent when DeepTutor answers. Rewritten with every turn. */
+  answer_by?: string;
   /** What this conversation narrowed its skill / MCP reach to. Absent or empty
    *  means it inherits everything its workspace allows. */
   skills?: string[];
@@ -106,10 +109,20 @@ export interface SessionPreferences {
   /** Source conversation for nested selected-text tutor threads. */
   parent_session_id?: string;
   session_kind?: "chat" | "selection_tutor" | "immersive_reading";
+  /** What a Little Tutor thread is about: one selected passage, or the whole
+   *  parent conversation (a side chat). Written by the backend on each turn. */
+  tutor_scope?: "selection" | "conversation";
+  /** The passage a selection thread pins, kept so a reopened thread can pin it
+   *  again; bounded, so it may be a prefix of a very long selection. */
+  tutor_selected_text?: string;
+  tutor_source_message_id?: number;
   /** Owning Immersive Reading workspace, present only for reading sessions. */
   reading_workspace_id?: string;
   /** Material active when the reading conversation was created. */
   reading_material_id?: string;
+  /** The book page whose tutor chat this is, written with the book's own record. */
+  book_id?: string;
+  book_page_id?: string;
   pinned?: boolean;
   archived?: boolean;
 }
@@ -251,14 +264,12 @@ export async function searchSessions(
   limit = 50,
   offset = 0,
   signal?: AbortSignal,
-  options?: { allWorkspaces?: boolean },
 ): Promise<SessionSearchPage> {
   const qs = new URLSearchParams({
     q: query,
     limit: String(limit),
     offset: String(offset),
   });
-  if (options?.allWorkspaces) qs.set("all_workspaces", "true");
   const response = await apiFetch(apiUrl(`/api/sessions/search?${qs}`), {
     cache: "no-store",
     signal,
@@ -270,7 +281,6 @@ export async function searchSessions(
 export async function searchAllSessions(
   query: string,
   signal?: AbortSignal,
-  options?: { allWorkspaces?: boolean },
 ): Promise<SessionSearchResult[]> {
   const pageSize = 100;
   const sessions: SessionSearchResult[] = [];
@@ -281,7 +291,6 @@ export async function searchAllSessions(
       pageSize,
       offset,
       signal,
-      options,
     );
     for (const session of page.sessions) {
       const key = `${sessionWorkspaceId(session)}:${session.session_id}`;
@@ -410,6 +419,34 @@ export async function updateSessionOrganization(
   invalidateClientCache("sessions:");
   notifySessionsChanged();
   return data.session;
+}
+
+/** A conversation's title, status and preferences — no transcript. */
+export async function getSessionOrganization(
+  sessionId: string,
+  workspaceId?: string,
+  signal?: AbortSignal,
+): Promise<SessionSummary> {
+  const response = await apiFetch(
+    apiUrl(scopedUrl(`/api/sessions/${sessionId}/organization`, workspaceId)),
+    { cache: "no-store", signal },
+  );
+  const data = await expectJson<{ session: SessionSummary }>(response);
+  return data.session;
+}
+
+/** The Little Tutor threads opened from a conversation, newest first. */
+export async function listSessionThreads(
+  sessionId: string,
+  workspaceId?: string,
+  signal?: AbortSignal,
+): Promise<SessionSummary[]> {
+  const response = await apiFetch(
+    apiUrl(scopedUrl(`/api/sessions/${sessionId}/threads`, workspaceId)),
+    { cache: "no-store", signal },
+  );
+  const data = await expectJson<{ threads: SessionSummary[] }>(response);
+  return data.threads ?? [];
 }
 
 export async function deleteSession(sessionId: string, workspaceId?: string): Promise<void> {

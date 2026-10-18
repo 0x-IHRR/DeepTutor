@@ -1,33 +1,58 @@
 'use client'
 import { useTranslation } from 'react-i18next'
-import { NavigationRow, Section } from './NavigationPrimitives'
-import { Library } from 'lucide-react'
-import { DASHBOARD_GROUPS, visibleGroups } from '@/components/space/dashboard-groups'
+import { NavigationRow, OverviewRow, Section } from './NavigationPrimitives'
+import { PersonalizationShelfIcon, ResourcesShelfIcon } from './ShelfIcons'
+import {
+  DASHBOARD_GROUPS,
+  PERSONALIZATION_GROUPS,
+  visibleGroups,
+  type DashboardGroup,
+} from '@/components/space/dashboard-groups'
 import { useCapabilityFilter } from '@/features/capabilities/useCapabilityCatalog'
-import { scopedUrl } from '@/lib/workspace-scope'
+import { navVisibleUnderPolicy } from './nav-entries'
 
-export function ResourcesNavigation() {
-  const { t, i18n } = useTranslation()
+function Shelf({ groups, titled }: { groups: DashboardGroup[]; titled: boolean }) {
+  const { i18n } = useTranslation()
   const available = useCapabilityFilter()
   const zh = i18n.language.startsWith('zh')
-  const groups = visibleGroups(DASHBOARD_GROUPS, available)
+  return visibleGroups(groups, available).map(group => {
+    const rows = group.items.map(row => (
+      <NavigationRow key={row.key} href={row.href} label={zh ? row.title.zh : row.title.en} icon={row.icon} />
+    ))
+    return titled ? (
+      <Section key={group.label.en} title={zh ? group.label.zh : group.label.en}>
+        {rows}
+      </Section>
+    ) : (
+      <div key={group.label.en} className="dt-navigation-section">
+        {rows}
+      </div>
+    )
+  })
+}
+
+/** The workspace's materials. */
+export function ResourcesNavigation() {
+  const { t } = useTranslation()
   return (
     <>
-      <Section title={t('navigation.resources')}>
-        <NavigationRow href="/space" label={t('navigation.allResources')} icon={Library} />
-      </Section>
-      {groups.map(group => (
-        <Section key={group.label.en} title={zh ? group.label.zh : group.label.en}>
-          {group.items.map(row => (
-            <NavigationRow
-              key={row.key}
-              href={scopedUrl(row.href)}
-              label={zh ? row.title.zh : row.title.en}
-              icon={row.icon}
-            />
-          ))}
-        </Section>
-      ))}
+      <OverviewRow href="/space" label={t('navigation.allResources')} icon={ResourcesShelfIcon} />
+      <Shelf groups={DASHBOARD_GROUPS} titled />
+    </>
+  )
+}
+
+/** What travels with the account into every workspace. */
+export function PersonalizationNavigation({ allowedSurfaces }: { allowedSurfaces: readonly string[] | null }) {
+  const { t } = useTranslation()
+  const groups = PERSONALIZATION_GROUPS.map(group => ({
+    ...group,
+    items: group.items.filter(item => item.href !== '/agents' || navVisibleUnderPolicy(item.href, allowedSurfaces)),
+  }))
+  return (
+    <>
+      <OverviewRow href="/personalization" label={t('navigation.allPersonalization')} icon={PersonalizationShelfIcon} />
+      <Shelf groups={groups} titled={false} />
     </>
   )
 }

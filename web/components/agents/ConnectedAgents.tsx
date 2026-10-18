@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Cpu, Loader2, Plug, Plus, Trash2, X, Bot } from "lucide-react";
 
-import { agentGlyph } from "@/components/agents/agent-icons";
+import { agentGlyph, agentKindLabel } from "@/components/agents/agent-icons";
 import SpaceSectionHeader from "@/components/space/SpaceSectionHeader";
 import {
   connectSubagent,
@@ -23,20 +23,7 @@ const REMOTE_HERMES_KIND = "hermes_remote";
 
 type Lang = { zh: string; en: string };
 
-function backendLabel(kind: string): string {
-  if (kind === "claude_code") return "Claude Code";
-  if (kind === "codex") return "Codex";
-  if (kind === "grok") return "Grok CLI";
-  if (kind === "antigravity") return "Antigravity CLI";
-  if (kind === "kimi") return "Kimi CLI";
-  if (kind === "opencode") return "opencode";
-  if (kind === "mimo") return "MiMo Code";
-  if (kind === "hermes") return "Hermes Agent";
-  if (kind === REMOTE_HERMES_KIND) return "Hermes Agent (remote)";
-  if (kind === "openclaw") return "OpenClaw";
-  if (kind === "deepseek_harness") return "DeepSeek Harness";
-  return kind;
-}
+const backendLabel = agentKindLabel;
 
 export default function ConnectedAgents() {
   const { i18n } = useTranslation();

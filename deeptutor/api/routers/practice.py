@@ -33,7 +33,6 @@ class PracticeSummary(BaseModel):
     next_due_at: float | None
     day_end: float
     timezone: str
-    unavailable_workspaces: list[str] = Field(default_factory=list)
 
 
 class PracticeQuestion(BaseModel):
@@ -101,29 +100,7 @@ async def _entry(entry_id: int) -> dict:
 
 
 @router.get("/summary", response_model=PracticeSummary)
-async def summary(timezone: str = "UTC", course_id: str = "", all_workspaces: bool = False):
-    if all_workspaces and not course_id:
-        from deeptutor.services.workspace.navigation import read_workspace_indexes
-
-        _, end = _validate_timezone(timezone)
-
-        async def read():
-            return [await summary(timezone, course_id)]
-
-        rows, unavailable = await read_workspace_indexes(read)
-        return {
-            **{
-                key: sum(row[key] for row in rows)
-                for key in ("total", "mistakes", "due", "overdue", "reviewed_today")
-            },
-            "next_due_at": min(
-                (row["next_due_at"] for row in rows if row["next_due_at"]), default=None
-            ),
-            "day_end": end,
-            "timezone": timezone,
-            "unavailable_workspaces": unavailable,
-        }
-
+async def summary(timezone: str = "UTC", course_id: str = ""):
     store = get_sqlite_session_store()
     sessions = await _course_session_ids(store, course_id)
     try:
@@ -138,26 +115,7 @@ async def queue(
     course_id: str = "",
     category_id: int | None = None,
     limit: int = Query(default=20, ge=1, le=100),
-    all_workspaces: bool = False,
 ):
-    if all_workspaces and not course_id:
-        from deeptutor.services.workspace.navigation import read_workspace_indexes
-
-        _validate_timezone(timezone)
-
-        async def read():
-            return await queue(timezone, course_id, category_id, limit)
-
-        rows, _ = await read_workspace_indexes(read)
-        rows.sort(
-            key=lambda row: (
-                row["state"].get("due_at") or row["entry"].get("created_at", 0),
-                row["content_workspace_id"],
-                row["entry"]["id"],
-            )
-        )
-        return rows[:limit]
-
     store = get_sqlite_session_store()
     practice = PracticeStore(store.db_path)
     sessions = await _course_session_ids(store, course_id)
@@ -182,39 +140,10 @@ async def queue(
 
 
 @router.get("/analytics", response_model=PracticeAnalytics)
-async def practice_analytics(
-    timezone: str = "UTC", days: int = 30, course_id: str = "", all_workspaces: bool = False
-):
+async def practice_analytics(timezone: str = "UTC", days: int = 30, course_id: str = ""):
     _validate_timezone(timezone)
     if days not in {7, 30, 90}:
         raise HTTPException(422, "Days must be 7, 30, or 90")
-    if all_workspaces and not course_id:
-        from deeptutor.services.workspace.navigation import read_workspace_indexes
-
-        async def read():
-            return [await practice_analytics(timezone, days, course_id)]
-
-        rows, _ = await read_workspace_indexes(read)
-        if not rows:
-            return await practice_analytics(timezone, days, course_id)
-        result = dict(rows[0])
-        for bucket, identity in (("daily", "date"), ("sources", "source")):
-            combined = {}
-            for row in rows:
-                for item in row[bucket]:
-                    target = combined.setdefault(
-                        item[identity],
-                        {identity: item[identity], "questions": 0, "mistakes": 0, "reviews": 0},
-                    )
-                    for metric in ("questions", "mistakes", "reviews"):
-                        target[metric] += item[metric]
-            result[bucket] = list(combined.values())
-        result["totals"] = {
-            metric: sum(row["totals"][metric] for row in rows)
-            for metric in ("questions", "mistakes", "reviews")
-        }
-        return result
-
     store = get_sqlite_session_store()
     sessions = await _course_session_ids(store, course_id)
     try:

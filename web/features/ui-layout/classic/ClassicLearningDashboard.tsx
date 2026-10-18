@@ -173,7 +173,7 @@ export function ClassicLearningDashboard() {
                       title={item.title}
                       updatedAt={item.updatedAt}
                       progress={item.progress}
-                      subtitle={<>{t(surface.title)}{item.workspaceName ? ` · ${item.workspaceName}` : ""}</>}
+                      subtitle={t(surface.title)}
                       icon={<surface.icon size={19} />}
                     />
                   )

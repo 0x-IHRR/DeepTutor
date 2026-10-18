@@ -5,7 +5,7 @@ Turn-level runtime manager for unified chat streaming.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 import logging
 import math
@@ -281,7 +281,7 @@ def _repair_chinese_emphasis_for_persistence(content: str, language: str) -> str
 
 def _stamp_content_offset(
     payload_event: dict[str, Any],
-    assistant_content: str,
+    assistant_content: str | Callable[[], str],
 ) -> None:
     """Attach the replay boundary to an event the answer must be laid out around.
 
@@ -294,6 +294,10 @@ def _stamp_content_offset(
 
     Two kinds of event carry the mark: a resolved ``ask_user`` card, and the
     start of a tool call. Both are rendered between runs of answer text.
+
+    ``assistant_content`` may be a callable: building the answer so far is a
+    join and a cleanup pass over every segment, and every streamed event comes
+    through here, so it is only built for the few events that need it.
     """
     metadata = payload_event.get("metadata")
     if not isinstance(metadata, dict):
@@ -301,8 +305,9 @@ def _stamp_content_offset(
     anchors_layout = bool(metadata.get("ask_user_resolved")) or (
         payload_event.get("type") == StreamEventType.TOOL_CALL.value
     )
-    if anchors_layout:
-        metadata.setdefault("assistant_content_offset", len(assistant_content))
+    if anchors_layout and "assistant_content_offset" not in metadata:
+        content = assistant_content() if callable(assistant_content) else assistant_content
+        metadata["assistant_content_offset"] = len(content)
 
 
 def _clip_text(value: str, limit: int = 4000) -> str:
@@ -919,6 +924,7 @@ def _request_snapshot_metadata(
     for payload_key, snapshot_key in (
         ("consult_partner_id", "consultPartnerId"),
         ("partner_discussion_group_id", "partnerDiscussionGroupId"),
+        ("answer_by", "answerBy"),
     ):
         if payload_key in payload:
             snapshot[snapshot_key] = payload[payload_key]
@@ -1162,29 +1168,66 @@ def _extract_followup_question_context(
     }
 
 
+# Matches the browser's own cap (``web/lib/selection-tutor.ts``). A tighter
+# clip here would append a truncation marker the source message never
+# contained, and the grounding check would then reject a real selection.
+SELECTION_TUTOR_MAX_CHARS = 12_000
+# A side chat reads the whole parent conversation, newest turns first, until
+# this budget is spent; each message is clipped so one long answer cannot
+# crowd out the rest.
+SIDE_CHAT_TRANSCRIPT_MAX_CHARS = 24_000
+SIDE_CHAT_MESSAGE_MAX_CHARS = 6_000
+
+
 def _extract_selection_tutor_context(
     config: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """Remove and normalize context for the selected-text side tutor."""
+    """Remove and normalize context for the Little Tutor side thread.
+
+    Two scopes share the thread: ``selection`` tutors one passage the learner
+    selected, ``conversation`` is a side chat about the whole parent
+    conversation and needs only that parent.
+    """
     if not isinstance(config, dict):
         return None
     raw = config.pop("selection_tutor_context", None)
     if not isinstance(raw, dict):
         return None
 
-    selected_text = _clip_text(str(raw.get("selected_text", "") or "").strip())
+    parent_session_id = str(raw.get("parent_session_id", "") or "").strip()
+    raw_source_message_id = raw.get("source_message_id")
+    source_message_id: int | None = None
+    if isinstance(raw_source_message_id, int) and not isinstance(raw_source_message_id, bool):
+        source_message_id = raw_source_message_id
+    elif str(raw_source_message_id or "").strip().isdigit():
+        source_message_id = int(str(raw_source_message_id).strip())
+
+    if str(raw.get("scope", "") or "").strip() == "conversation":
+        if not parent_session_id:
+            return None
+        conversation: dict[str, Any] = {
+            "scope": "conversation",
+            "selected_text": "",
+            "parent_session_id": parent_session_id,
+        }
+        # The tip of the branch the learner is looking at; edit branches they
+        # moved away from are not part of what they are asking about.
+        if source_message_id is not None and source_message_id > 0:
+            conversation["source_message_id"] = source_message_id
+        return conversation
+
+    selected_text = _clip_text(
+        str(raw.get("selected_text", "") or "").strip(),
+        limit=SELECTION_TUTOR_MAX_CHARS,
+    )
     if not selected_text:
         return None
     context: dict[str, Any] = {
         "selected_text": selected_text,
-        "parent_session_id": str(raw.get("parent_session_id", "") or "").strip(),
+        "parent_session_id": parent_session_id,
     }
-    raw_source_message_id = raw.get("source_message_id")
-    if isinstance(raw_source_message_id, int) and not isinstance(raw_source_message_id, bool):
-        context["source_message_id"] = raw_source_message_id
-    elif str(raw_source_message_id or "").strip().isdigit():
-        context["source_message_id"] = int(str(raw_source_message_id).strip())
-
+    if source_message_id is not None:
+        context["source_message_id"] = source_message_id
     source_message_text = str(raw.get("source_message_text", "") or "").strip()
     if source_message_text:
         context["source_message_text"] = source_message_text
@@ -1287,13 +1330,49 @@ def _selection_is_grounded(source_text: str, selected_text: str) -> bool:
     return _latex_selection_is_grounded(normalized_source, normalized_selected)
 
 
+def _side_chat_transcript(messages: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """The parent conversation a side chat reads, bounded from the newest end."""
+    kept: list[dict[str, str]] = []
+    spent = 0
+    for message in reversed(messages):
+        role = str(message.get("role") or "").strip()
+        content = str(message.get("content") or "").strip()
+        if role not in {"user", "assistant"} or not content:
+            continue
+        content = _clip_text(content, limit=SIDE_CHAT_MESSAGE_MAX_CHARS)
+        if kept and spent + len(content) > SIDE_CHAT_TRANSCRIPT_MAX_CHARS:
+            kept.append({"role": "omitted", "content": ""})
+            break
+        kept.append({"role": role, "content": content})
+        spent += len(content)
+    kept.reverse()
+    return kept
+
+
 async def _resolve_selection_tutor_context(
     store: Any,
     context: dict[str, Any],
 ) -> dict[str, Any]:
-    """Resolve the selected passage's containing message from its parent chat."""
+    """Resolve what a Little Tutor thread is grounded in, from its parent chat.
+
+    A selection resolves to its containing message; a side chat resolves to
+    the parent conversation itself. Both are read fresh every turn so the
+    thread never answers from a stale copy.
+    """
     resolved = dict(context)
     parent_session_id = str(resolved.get("parent_session_id") or "").strip()
+    if resolved.get("scope") == "conversation":
+        leaf = resolved.get("source_message_id")
+        try:
+            path = await store.get_messages_for_context(
+                parent_session_id,
+                leaf if isinstance(leaf, int) and leaf > 0 else None,
+            )
+        except Exception:
+            raise ValueError("Could not read the conversation this side chat is about") from None
+        resolved["conversation_messages"] = _side_chat_transcript(path)
+        return resolved
+
     source_message_id = resolved.get("source_message_id")
 
     authoritative_source_required = bool(
@@ -1496,7 +1575,49 @@ def _format_followup_question_context(context: dict[str, Any], language: str = "
     return "\n".join(lines).strip()
 
 
+def _format_side_chat_context(context: dict[str, Any], language: str = "en") -> str:
+    parent_session_id = str(context.get("parent_session_id") or "").strip() or "(none)"
+    messages = context.get("conversation_messages") or []
+    zh = str(language or "en").lower().startswith("zh")
+    if zh:
+        lines = [
+            "你是侧栏中的“小老师”。学习者在主对话旁边开了一个侧边聊天，想在不打断主对话的前提下追问。",
+            "下面的主对话记录是这里所有问题的共同背景；“这个/刚才/上面”默认指主对话里的内容。",
+            "优先依据主对话里已有的定义、推导、代码和结论回答；主对话没有提供的信息不要臆造，需要时说明这超出了主对话的范围。",
+            "不要读取、引用或写入全局记忆；这里的问答不会写回主对话。",
+            "回答要简明、循序渐进。",
+            "",
+            "[主对话记录（按时间顺序）]",
+        ]
+        labels = {"user": "学习者", "assistant": "导师", "omitted": "（更早的消息已省略）"}
+    else:
+        lines = [
+            "You are the Little Tutor in a sidebar. The learner opened a side chat next to the main conversation to ask follow-up questions without interrupting it.",
+            "The main conversation below is the shared background for every question here; 'this', 'that', or 'above' refer to it by default.",
+            "Ground answers in the definitions, derivations, code, and conclusions the main conversation already has. Do not invent what it does not contain; say so when a question goes beyond it.",
+            "Do not read, cite, or write global memory. Nothing said here is written back into the main conversation.",
+            "Answer clearly and step by step.",
+            "",
+            "[Main conversation, oldest first]",
+        ]
+        labels = {"user": "Learner", "assistant": "Tutor", "omitted": "(earlier messages omitted)"}
+    if not messages:
+        lines.append("（主对话还没有内容）" if zh else "(the main conversation is still empty)")
+    for message in messages:
+        role = str(message.get("role") or "")
+        if role == "omitted":
+            lines.append(labels["omitted"])
+            continue
+        lines.extend([f"{labels.get(role, role)}:", str(message.get("content") or ""), ""])
+    lines.extend(
+        ["", f"来源会话：{parent_session_id}" if zh else f"Source session: {parent_session_id}"]
+    )
+    return "\n".join(lines).strip()
+
+
 def _format_selection_tutor_context(context: dict[str, Any], language: str = "en") -> str:
+    if context.get("scope") == "conversation":
+        return _format_side_chat_context(context, language=language)
     selected_text = context.get("selected_text", "").strip()
     parent_session_id = context.get("parent_session_id", "").strip() or "(none)"
     source_message_text = str(context.get("source_message_text") or "").strip()

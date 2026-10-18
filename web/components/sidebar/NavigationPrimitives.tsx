@@ -51,6 +51,41 @@ export function NavigationRow({
     </Tooltip>
   )
 }
+/**
+ * A shelf's lead entry — the shelf's own home — set apart from the lists
+ * beneath it, with room for one action on its right.
+ */
+export function OverviewRow({
+  href,
+  label,
+  icon: Icon,
+  action,
+}: {
+  href: string
+  label: string
+  icon: LucideIcon
+  action?: ReactNode
+}) {
+  const drawer = useSidebarDrawer()
+  const pathname = usePathname()
+  const selected = pathname === href
+  return (
+    <div className={`dt-overview-row ${selected ? 'is-active' : ''}`}>
+      <Link
+        href={href}
+        prefetch={false}
+        aria-current={selected ? 'page' : undefined}
+        onClick={event => {
+          if (!event.metaKey && !event.ctrlKey && !event.shiftKey) drawer?.close()
+        }}
+      >
+        <Icon size={16} strokeWidth={1.6} />
+        <span>{label}</span>
+      </Link>
+      {action}
+    </div>
+  )
+}
 export function Section({
   title,
   action,

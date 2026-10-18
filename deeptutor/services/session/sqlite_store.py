@@ -3081,7 +3081,7 @@ class SQLiteSessionStore:
         return await self._run(self._update_summary_sync, session_id, summary, up_to_msg_id)
 
     def _update_session_preferences_sync(
-        self, session_id: str, preferences: dict[str, Any]
+        self, session_id: str, preferences: dict[str, Any], touch: bool = True
     ) -> bool:
         with self._connect() as conn:
             current = conn.execute(
@@ -3095,21 +3095,25 @@ class SQLiteSessionStore:
                 **(preferences or {}),
             }
             merged = upgrade_workspace_preferences(merged)
+            # ``touch=False`` records metadata (a link, a migration) without
+            # making the conversation look recently used.
             cur = conn.execute(
                 """
                 UPDATE sessions
-                SET preferences_json = ?, updated_at = ?
+                SET preferences_json = ?, updated_at = COALESCE(?, updated_at)
                 WHERE id = ?
                 """,
-                (_json_dumps(merged), time.time(), session_id),
+                (_json_dumps(merged), time.time() if touch else None, session_id),
             )
             conn.commit()
         return cur.rowcount > 0
 
     async def update_session_preferences(
-        self, session_id: str, preferences: dict[str, Any]
+        self, session_id: str, preferences: dict[str, Any], *, touch: bool = True
     ) -> bool:
-        return await self._run(self._update_session_preferences_sync, session_id, preferences)
+        return await self._run(
+            self._update_session_preferences_sync, session_id, preferences, touch
+        )
 
     async def get_session_with_messages(self, session_id: str) -> dict[str, Any] | None:
         session = await self.get_session(session_id)

@@ -10,8 +10,6 @@ import { practiceRoute, questionBankRoute } from "@/lib/learning-routes";
 import { getPracticeQueue, getPracticeSummary, type PracticeSummary } from "@/lib/practice-api";
 import { LearningErrorState, LearningShell } from "../LearningShell";
 import { ReviewHome } from "./ReviewHome";
-import { WorkspaceLabel } from "../LibraryWorkspace";
-import { activeWorkspaceId } from "@/lib/workspace-scope";
 import { PracticeImport } from "./PracticeImport";
 import { PracticeSession } from "./PracticeSession";
 import { PracticeInsights } from "./PracticeInsights";
@@ -135,7 +133,6 @@ function ScopedPracticePage({ mode, initialImport }: { mode: "practice" | "libra
         )
       }
     >
-      {!libraryOnly && <div className="mb-4 flex items-center gap-3 text-xs"><a href="/learning/practice" className="underline">{t("All workspaces")}</a><WorkspaceLabel row={{ content_workspace_id: activeWorkspaceId() }} /></div>}
       {session ? (
         <PracticeSession ids={session} onClose={closeSession} backLabel={libraryOnly ? t("Back to library") : undefined} />
       ) : (

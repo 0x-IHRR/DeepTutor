@@ -826,6 +826,19 @@
     "StartTurnCommand": {
       "additionalProperties": false,
       "properties": {
+        "answer_by": {
+          "anyOf": [
+            {
+              "pattern": "^(partner|subagent):\\S.*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Answer By"
+        },
         "attachments": {
           "items": {
             "$ref": "#/$defs/OutgoingAttachment"

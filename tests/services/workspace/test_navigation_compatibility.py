@@ -32,10 +32,11 @@ async def test_learning_index_preserves_equal_ids_and_existing_bytes(account):
         result = await dashboard.get_learning_index()
         assert current_workspace_id() == other
     assert result["failed"] == []
-    assert {row["content_workspace_id"] for row in result["sources"]["books"]} == {"", other}
-    assert {row["id"] for row in result["sources"]["books"]} == {"bk_legacy"}
-    assert {row["content_workspace_id"] for row in result["sources"]["practice"]} == {"", other}
-    assert len(result["sources"]["practice"]) == 2
+    # Only the request's workspace is read, even when another holds equal ids.
+    assert [(row["id"], row["content_workspace_id"]) for row in result["sources"]["books"]] == [
+        ("bk_legacy", other)
+    ]
+    assert [row["content_workspace_id"] for row in result["sources"]["practice"]] == [other]
     for origin in ("", other):
         with workspace_context(origin):
             current = await get_sqlite_session_store().find_notebook_entry("lesson", "q1")

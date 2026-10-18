@@ -5,6 +5,5 @@ export const classicTokens: UiLayoutTokens = {
     space: "Learning Space",
     learning: "Personalized Learning",
     defaultCapability: "Chat",
-    starterHeading: "",
   },
 };

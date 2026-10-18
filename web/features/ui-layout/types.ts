@@ -34,7 +34,5 @@ export interface UiLayoutTokens {
     learning: string;
     /** The default chat capability in the mode picker. */
     defaultCapability: string;
-    /** Heading over the chat home's suggestions; empty for none. */
-    starterHeading: string;
   };
 }

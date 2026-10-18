@@ -7,8 +7,12 @@ import { UnifiedTurnClient } from '@/features/chat/transport/UnifiedTurnClient'
 import type { LLMSelection, StreamEvent } from '@/features/chat/model/protocol'
 import { shouldAppendEventContent, isRetractionMarker, recomputeAnswerContent } from '@/lib/stream'
 import { useLLMOptions } from '@/hooks/useLLMOptions'
+import AnswerModeMenu from '@/components/chat/home/AnswerModeMenu'
+import { usePartnerRoster } from '@/hooks/usePartnerRoster'
+import { listSubagentConnections } from '@/lib/subagents-api'
 import ModelSelector from '@/components/chat/home/ModelSelector'
 import Tooltip from '@/shared/ui/Tooltip'
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspaceId'
 import { getSession } from '@/lib/session-api'
 import { apiFetch, apiUrl } from '@/lib/api'
 import { getNote, createNote, saveNote, noteRequest } from '@/lib/notes-api'
@@ -21,7 +25,6 @@ import { noteGenerationConfig } from '../model/research'
 import { visibleNotePrompt, type NoteAIRequest } from '../model/ai-request'
 import type { NoteBlock } from '@/lib/notes-api'
 import { browserStorage } from '@/shared/storage'
-import { activeWorkspaceId } from '@/lib/workspace-scope'
 const Markdown = dynamic(() => import('@/components/common/MarkdownRenderer'), { ssr: false })
 const Result = dynamic(() => import('./NoteLearningContent'), { ssr: false })
 type Message = { role: 'user' | 'assistant'; content: string; block?: NoteBlock }
@@ -43,8 +46,11 @@ export default function NoteCompanion({
   onRequestConsumed: (id: number) => void
 }) {
   const { t, i18n } = useTranslation()
-  const workspaceId = activeWorkspaceId()
+  const workspaceId = useActiveWorkspaceId()
   const models = useLLMOptions()
+  const partners = usePartnerRoster()
+  const [agents, setAgents] = useState<{ name: string; kind: string }[]>([])
+  const [answerBy, setAnswerBy] = useState<string | null>(null)
   const [model, setModel] = useState<LLMSelection | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -90,6 +96,9 @@ export default function NoteCompanion({
   onSuggestionsRef.current = onSuggestions
   const key = `deeptutor.notes.chat:${scope}:${pageId}`
   useEffect(() => {
+    void listSubagentConnections()
+      .then(items => setAgents(items.map(a => ({ name: a.name, kind: a.agent_kind }))))
+      .catch(() => {})
     void listKnowledgeBases()
       .then(items => setKnowledge(items.map(kb => ({ name: kb.name, ref: knowledgeBaseRef(kb) }))))
       .catch(() => {})
@@ -334,7 +343,7 @@ export default function NoteCompanion({
         setInput('')
         turnEvents.current = []
         const sourcePage =
-          generationTarget.current || mode !== 'chat' ? await getNote(pageId) : null
+          generationTarget.current || mode !== 'chat' || answerBy ? await getNote(pageId) : null
         const grounding = sourcePage?.content || ''
         if (sourcePage && generationTarget.current) {
           const find = (blocks: NoteBlock[]): NoteBlock | undefined => {
@@ -368,6 +377,7 @@ export default function NoteCompanion({
             : requestText,
           capability: mode,
           config: noteGenerationConfig(mode, config),
+          answer_by: answerBy,
           capability_once: mode !== 'chat',
           knowledge_bases: selectedKbs,
           attachments,
@@ -391,6 +401,7 @@ export default function NoteCompanion({
     },
     [
       attachments,
+      answerBy,
       beforeSend,
       i18n.language,
       mode,
@@ -559,6 +570,15 @@ export default function NoteCompanion({
         <p className="px-4 text-xs text-[var(--primary)]">{t('Dito is waiting for your answer')}</p>
       )}
       <div className="flex flex-wrap gap-1 px-3 text-xs">
+        <AnswerModeMenu
+          placement="up"
+          answerers={{
+            value: answerBy,
+            onChange: setAnswerBy,
+            partners: partners.partners,
+            agents,
+          }}
+        />
         <select
           aria-label={t('Generation mode')}
           value={mode}

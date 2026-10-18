@@ -6,9 +6,8 @@ import { useTranslation } from 'react-i18next'
 import Tooltip from '@/shared/ui/Tooltip'
 import { Dialog } from '@/shared/ui/Dialog'
 import { LEARNING_SURFACES } from './surfaces'
-import { useChatWorkspaces } from '@/hooks/useChatWorkspaces'
 import { useAuthStatus } from '@/hooks/useAuthStatus'
-import { activeWorkspaceId, navigateTask, scopedUrl } from '@/lib/workspace-scope'
+import { navigateTask } from '@/lib/workspace-scope'
 import { pageActionClass } from '@/components/layout/FeaturePage'
 import { useSidebarDrawer } from '@/components/layout/AppShell'
 
@@ -17,8 +16,6 @@ export function LearningCreateMenu({ compact = false }: { compact?: boolean }) {
   const router = useRouter()
   const drawer = useSidebarDrawer()
   const [open, setOpen] = useState(false)
-  const [destination, setDestination] = useState(activeWorkspaceId)
-  const { workspaces, error } = useChatWorkspaces()
   const { learningPolicy } = useAuthStatus()
   const surfaces = LEARNING_SURFACES.filter(
     item =>
@@ -33,10 +30,7 @@ export function LearningCreateMenu({ compact = false }: { compact?: boolean }) {
         <button
           type="button"
           aria-label={t('navigation.createLearning')}
-          onClick={() => {
-            setDestination(activeWorkspaceId())
-            setOpen(true)
-          }}
+          onClick={() => setOpen(true)}
           className={compact ? 'dt-nav-icon' : pageActionClass()}
         >
           <Plus size={compact ? 17 : 15} />
@@ -50,34 +44,6 @@ export function LearningCreateMenu({ compact = false }: { compact?: boolean }) {
         description={t('navigation.createLearningDescription')}
         closeLabel={t('Close')}
       >
-        <div className="mb-5">
-          <label
-            className="text-xs text-muted-foreground"
-            htmlFor={compact ? 'sidebar-create-workspace' : 'page-create-workspace'}
-          >
-            {t('Save to workspace')}
-          </label>
-          <select
-            id={compact ? 'sidebar-create-workspace' : 'page-create-workspace'}
-            value={destination}
-            onChange={event => setDestination(event.target.value)}
-            className="mt-2 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
-          >
-            <option value="">{t('Default workspace')}</option>
-            {workspaces
-              .filter(row => !row.archived && row.status === 'ready')
-              .map(row => (
-                <option key={row.workspace_id} value={row.workspace_id}>
-                  {row.display_name}
-                </option>
-              ))}
-          </select>
-          {error && (
-            <p role="alert" className="mt-2 text-xs text-destructive">
-              {error}
-            </p>
-          )}
-        </div>
         <div className="grid grid-cols-2 gap-3">
           {surfaces.map(item => (
             <button
@@ -87,7 +53,7 @@ export function LearningCreateMenu({ compact = false }: { compact?: boolean }) {
               onClick={() => {
                 setOpen(false)
                 drawer?.close()
-                navigateTask(scopedUrl(`${item.href}?create=1`, destination), router.push)
+                navigateTask(`${item.href}?create=1`, router.push)
               }}
             >
               <item.icon size={22} strokeWidth={1.6} className="mb-3 text-muted-foreground" />

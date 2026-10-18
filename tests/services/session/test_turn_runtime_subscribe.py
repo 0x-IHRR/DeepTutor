@@ -527,6 +527,57 @@ async def test_selection_tutor_inherits_parent_course(
     assert persisted["preferences"]["course_id"] == course.id
     assert persisted["preferences"]["parent_session_id"] == parent["id"]
     assert persisted["preferences"]["session_kind"] == "selection_tutor"
+    # A reopened thread pins its passage again from these.
+    assert persisted["preferences"]["tutor_scope"] == "selection"
+    assert (
+        persisted["preferences"]["tutor_selected_text"] == "Load code and static data into memory"
+    )
+    assert persisted["preferences"]["tutor_source_message_id"] == source_message_id
+
+
+@pytest.mark.asyncio
+async def test_side_chat_starts_from_the_parent_alone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    store = SQLiteSessionStore(tmp_path / "side-chat.db")
+    runtime = TurnRuntimeManager(store)
+    parent = await store.ensure_session(None)
+    await store.add_message(parent["id"], "user", "Explain fork()")
+    leaf = await store.add_message(parent["id"], "assistant", "It returns twice.")
+
+    async def _noop_run_turn(_execution):
+        return None
+
+    monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
+
+    child, turn = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "session_id": None,
+            "capability": "chat",
+            "content": "Why twice?",
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            "language": "en",
+            "config": {
+                "selection_tutor_context": {
+                    "scope": "conversation",
+                    "parent_session_id": parent["id"],
+                    "source_message_id": leaf,
+                }
+            },
+        }
+    )
+
+    persisted = await store.get_session(child["id"])
+    assert persisted is not None
+    assert persisted["preferences"]["parent_session_id"] == parent["id"]
+    assert persisted["preferences"]["session_kind"] == "selection_tutor"
+    assert persisted["preferences"]["tutor_scope"] == "conversation"
+    # The transcript is resolved again when the turn runs, never queued with it.
+    queued = runtime._executions[turn["id"]].payload["selection_tutor_context"]
+    assert "conversation_messages" not in queued
 
 
 @pytest.mark.asyncio

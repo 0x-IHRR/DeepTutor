@@ -20,13 +20,12 @@ import {
 } from '@/lib/mastery-mode'
 import { setPendingPrompt } from '@/lib/pending-prompt'
 
-import { useLibraryFilter } from '@/components/learning/LibraryWorkspace'
 import { libraryItemKey } from '@/lib/learning-library'
 import { topicDisplayName } from './format'
 import { TopicMapCard } from './TopicMapCard'
 
 export function TopicAtlas({
-  topics: allTopics,
+  topics,
   loading,
   error,
   onCreate,
@@ -42,7 +41,6 @@ export function TopicAtlas({
   scopeChip?: React.ReactNode
 }) {
   const { t } = useTranslation()
-  const { rows: topics, control } = useLibraryFilter(allTopics)
   const activeTopics = topics.filter(topic => topic.metadata.status === 'active')
   const dueCount = activeTopics.reduce(
     (count, topic) => count + topic.reviews.filter(review => review.due).length,
@@ -70,7 +68,6 @@ export function TopicAtlas({
         </button>
       }
     >
-      <div className="mt-6 flex items-center justify-between border-b border-border pb-4">{control}</div>
       {dueCount > 0 && (
         <section className="mt-8 flex flex-col gap-3 rounded-lg border border-[var(--border)] bg-[var(--muted-foreground)]/[0.07] px-4 py-3.5 text-sm text-[var(--foreground)] sm:flex-row sm:items-center">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--muted-foreground)]/15 text-[var(--muted-foreground)]">

@@ -62,6 +62,7 @@ class TurnRuntimeContext:
     subagent_consult_budget: int | None = None
     consult_partner_id: str | None = None
     partner_discussion_group_id: str | None = None
+    answer_by: str | None = None
     min_loop_rounds: int = 0
     workspace: WorkspaceRuntimeContext | None = None
 

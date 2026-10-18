@@ -13,7 +13,6 @@ export interface PracticeSummary {
   next_due_at: number | null
   day_end: number
   timezone: string
-  unavailable_workspaces?: string[]
 }
 export interface PracticeRef {
   id: number
@@ -38,12 +37,8 @@ export interface PracticeAnalytics {
   sources: (PracticeCounts & { source: string })[]
   totals: PracticeCounts
 }
-export const getPracticeAnalytics = (courseId = '', days = 30, workspaceId?: string) =>
-  request<PracticeAnalytics>(
-    `/analytics?${params(courseId)}&days=${days}&all_workspaces=${workspaceId === '*'}`,
-    undefined,
-    workspaceId === '*' ? '' : workspaceId
-  )
+export const getPracticeAnalytics = (courseId = '', days = 30) =>
+  request<PracticeAnalytics>(`/analytics?${params(courseId)}&days=${days}`)
 export interface ImportPreview {
   token: string | null
   total: number
@@ -84,18 +79,10 @@ function params(courseId = ''): string {
     course_id: courseId,
   }).toString()
 }
-export const getPracticeSummary = (courseId = '', workspaceId?: string) =>
-  request<PracticeSummary>(
-    `/summary?${params(courseId)}&all_workspaces=${workspaceId === '*'}`,
-    undefined,
-    workspaceId === '*' ? '' : workspaceId
-  )
-export const getPracticeQueue = (courseId = '', workspaceId?: string) =>
-  request<PracticeQuestion[]>(
-    `/queue?${params(courseId)}&all_workspaces=${workspaceId === '*'}`,
-    undefined,
-    workspaceId === '*' ? '' : workspaceId
-  )
+export const getPracticeSummary = (courseId = '') =>
+  request<PracticeSummary>(`/summary?${params(courseId)}`)
+export const getPracticeQueue = (courseId = '') =>
+  request<PracticeQuestion[]>(`/queue?${params(courseId)}`)
 export const getPracticeQuestion = (id: number, workspaceId?: string) =>
   request<PracticeQuestion>(`/questions/${id}`, undefined, workspaceId)
 export const checkPracticeAnswer = (id: number, answer: string, workspaceId?: string) =>

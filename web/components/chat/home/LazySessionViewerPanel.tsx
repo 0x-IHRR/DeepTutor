@@ -92,6 +92,7 @@ const LazySessionViewerPanel = forwardRef<
         callPanel((panel) => panel.openQuizFollowupTab(context)),
       openSelectionTutorTab: (selection, language) =>
         callPanel((panel) => panel.openSelectionTutorTab(selection, language)),
+      openSideChatTab: () => callPanel((panel) => panel.openSideChatTab()),
       openGeogebraTab: (payload) =>
         callPanel((panel) => panel.openGeogebraTab(payload)),
       openSubagentTab: (callId, label, events, focus) =>

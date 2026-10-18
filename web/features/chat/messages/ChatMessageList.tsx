@@ -114,6 +114,9 @@ import type { OrphanedFailedTurn } from "@/lib/session-api";
 import { agentGlyph } from "@/components/agents/agent-icons";
 import { useConsultationReference } from "@/hooks/useConsultationReference";
 import { useConnectedAgentKinds } from "@/hooks/useConnectedAgentKinds";
+import { usePartner } from "@/hooks/usePartnerRoster";
+import { AnswererMark } from "@/features/chat/trace/AnswererMark";
+import { answererOf, parseAnswerBy } from "@/features/chat/trace/answerer";
 import {
   authoritativeResearchReport,
   isConfirmedResearchFollowup,
@@ -1012,6 +1015,9 @@ export const AssistantMessage = memo(function AssistantMessage({
       : undefined;
   }, [headerProcess, t]);
 
+  // A turn handed to a partner or an agent is theirs: the header shows them.
+  const answerer = useMemo(() => answererOf(events), [events]);
+
   const researchInProgress =
     outlineStatus === "researching" ||
     outlineStatus === "done" ||
@@ -1027,6 +1033,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           still working, collapsed once it settles into the final answer. */}
       <AssistantActivity
         events={events}
+        answerer={answerer}
         traceEvents={headerTraceEvents}
         isStreaming={isStreaming}
         content={msg.content}
@@ -1638,6 +1645,7 @@ export const UserMessage = memo(function UserMessage({
   // snapshot's Space references — rendered as one collapsed tree under
   // the bubble (the sent-message mirror of the composer's tree).
   const snap = msg.requestSnapshot;
+  const handedTo = parseAnswerBy(snap?.config?.answer_by);
   const refTreeItems: ContextTreeItem[] = [
     ...(consultation ? [{
       key: `${consultation.kind}-${consultation.id}`,
@@ -1759,13 +1767,15 @@ export const UserMessage = memo(function UserMessage({
         data-turn-key={turnAnchorKey(msg, index)}
         className="flex max-w-[75%] flex-col items-end gap-1.5"
       >
-        {showModeBadge && (
+        {handedTo ? (
+          <HandedToBadge kind={handedTo.kind} id={handedTo.id} agentKind={agentKinds[handedTo.id]} />
+        ) : showModeBadge ? (
           <div className="flex justify-end pr-1">
             <span className="text-[10px] tracking-wide text-[var(--muted-foreground)]">
               {t(getModeBadgeLabel(msg.capability))}
             </span>
           </div>
-        )}
+        ) : null}
         {editing ? (
           <div className="w-[min(620px,75vw)] rounded-2xl border border-[var(--primary)]/40 bg-[var(--secondary)] px-3 py-2.5 text-[14px] leading-relaxed text-[var(--foreground)] shadow-sm">
             <textarea
@@ -2441,3 +2451,24 @@ export const ChatMessageList = memo(function ChatMessageList({
 });
 
 ChatMessageList.displayName = "ChatMessageList";
+
+/** Above a message handed to someone: their mark and "Handed to <name>". */
+function HandedToBadge({
+  kind,
+  id,
+  agentKind,
+}: {
+  kind: "partner" | "subagent";
+  id: string;
+  agentKind?: string;
+}) {
+  const { t } = useTranslation();
+  const partner = usePartner(kind === "partner" ? id : null);
+  const name = partner?.name ?? id;
+  return (
+    <div className="flex items-center justify-end gap-1.5 pr-1 text-[11px] text-[var(--muted-foreground)]">
+      <AnswererMark answerer={{ kind, id, name, agent: agentKind }} size={14} />
+      <span>{t("trace.answerer.handedTo", { name })}</span>
+    </div>
+  );
+}

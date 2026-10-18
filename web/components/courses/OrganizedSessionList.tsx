@@ -4,22 +4,13 @@ import Tooltip from "@/shared/ui/Tooltip";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  Archive,
-  ArchiveRestore,
-  Check,
   ChevronDown,
   ChevronRight,
-  Folder,
-  FolderOpen,
   GraduationCap,
   MoreHorizontal,
   Unlink,
-  Pencil,
   Pin,
-  PinOff,
-  Plus,
   RotateCcw,
-  Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -41,12 +32,25 @@ import type {
 } from "@/lib/session-api";
 import { sessionWorkspaceId } from "@/lib/session-api";
 import { organizeSessionTree } from "@/lib/session-organization";
+import { matches } from "@/components/sidebar/NavigationPrimitives";
+import {
+  RecordGroups,
+  RecordTime,
+  type RecordView,
+} from "@/components/sidebar/RecordList";
 import {
   displaySessionTitle,
   isPlaceholderSessionTitle,
 } from "@/lib/session-title";
 import { useDragSort } from "@/hooks/useDragSort";
 import { placeMenu, type FloatingMenuPosition } from "@/lib/floating-menu";
+import {
+  SESSION_MENU_SURFACE,
+  SESSION_MENU_WIDTH,
+  SessionActionsMenuItems,
+  SessionMenuDivider,
+  SessionMenuItem,
+} from "@/components/sessions/SessionActionsMenu";
 import {
   buildSidebarEntries,
   type SidebarGroupEntry,
@@ -65,11 +69,16 @@ interface OrganizedSessionListProps {
    * the menu keeps the block out.
    */
   workspaces?: ChatWorkspaceRegistration[];
-  /** Account sidebar only; scoped lists already live within a workspace. */
-  groupWorkspaces?: boolean;
-  /** Title the workspace groups as one "Projects" block (modern UI). */
-  workspaceHeading?: boolean;
-  onNewWorkspaceChat?: (workspaceId: string) => void;
+  /** Fold every conversation under one "Recent" heading. */
+  recents?: boolean;
+  /**
+   * The sidebar's record view: conversations by day, in the chosen order,
+   * filtered by its search — the same shape as the learning and partner
+   * records. Hand ordering and groups do not apply there.
+   */
+  timeline?: RecordView;
+  /** Show each row's last activity, as the record lists do, without grouping by day. */
+  times?: boolean;
   /** Topics whose study conversations get their own group. Omit for none. */
   masteryTopics?: MasteryTopicLabel[];
   /** Collections whose reading conversations get their own group. */
@@ -106,15 +115,14 @@ interface OrganizedSessionListProps {
   scrollRef?: React.RefObject<HTMLElement | null>;
 }
 
-const MENU_WIDTH = 240;
 
 export default function OrganizedSessionList({
   sessions,
   courses,
   workspaces = [],
-  groupWorkspaces = false,
-  workspaceHeading = false,
-  onNewWorkspaceChat,
+  recents = false,
+  timeline,
+  times = false,
   masteryTopics = [],
   readingCollections = [],
   activeSessionId,
@@ -195,12 +203,12 @@ export default function OrganizedSessionList({
       buildSidebarEntries({
         roots,
         courses,
-        workspaces: groupWorkspaces ? workspaces : undefined,
+        recents,
         masteryTopics,
         readingCollections,
         manualOrder,
       }),
-    [courses, workspaces, groupWorkspaces, manualOrder, masteryTopics, readingCollections, roots],
+    [courses, recents, manualOrder, masteryTopics, readingCollections, roots],
   );
 
   const entryIds = useMemo(() => entries.map((entry) => entry.id), [entries]);
@@ -306,7 +314,6 @@ export default function OrganizedSessionList({
     const expanded =
       children.length > 0 && !collapsedParents.has(session.session_id);
     const menuOpen = openMenuId === session.session_id;
-    const archived = Boolean(session.preferences?.archived);
     const pinned = Boolean(session.preferences?.pinned);
     const taskLinks = sessionTaskLinks(
       taskBoard, session.session_id, sessionWorkspaceId(session),
@@ -404,36 +411,76 @@ export default function OrganizedSessionList({
               {children.length}
             </span>
           ) : null}
-          <button
-            type="button"
-            data-no-drag
-            onClick={(event) => {
-              event.stopPropagation();
-              if (menuOpen) {
-                setOpenMenuId(null);
-                setMenuPosition(null);
-                return;
-              }
-              menuAnchorRef.current = event.currentTarget;
-              setMenuPosition(
-                placeMenu(
-                  event.currentTarget.getBoundingClientRect(),
-                  MENU_WIDTH,
-                ),
-              );
-              setOpenMenuId(session.session_id);
-            }}
-            className={`rounded p-1 hover:bg-[var(--muted)] ${
-              menuOpen
-                ? "opacity-100"
-                : "opacity-0 group-hover/session:opacity-100 focus:opacity-100"
-            }`}
-            aria-label={t("Conversation actions")}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-          >
-            <MoreHorizontal size={13} />
-          </button>
+          {timeline || times ? (
+            // The time gives way to the actions under the pointer or focus.
+            <span className="relative flex shrink-0 items-center justify-end">
+              <RecordTime
+                seconds={timeline?.sort === "createdAt" ? session.created_at : session.updated_at}
+                className={menuOpen ? "invisible" : "group-hover/session:invisible group-focus-within/session:invisible"}
+              />
+              <button
+                type="button"
+                data-no-drag
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (menuOpen) {
+                    setOpenMenuId(null);
+                    setMenuPosition(null);
+                    return;
+                  }
+                  menuAnchorRef.current = event.currentTarget;
+                  setMenuPosition(
+                    placeMenu(
+                      event.currentTarget.getBoundingClientRect(),
+                      SESSION_MENU_WIDTH,
+                    ),
+                  );
+                  setOpenMenuId(session.session_id);
+                }}
+                className={`absolute right-0 rounded p-1 hover:bg-[var(--muted)] ${
+                  menuOpen
+                    ? "opacity-100"
+                    : "opacity-0 group-hover/session:opacity-100 focus:opacity-100"
+                }`}
+                aria-label={t("Conversation actions")}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+              >
+                <MoreHorizontal size={13} />
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              data-no-drag
+              onClick={(event) => {
+                event.stopPropagation();
+                if (menuOpen) {
+                  setOpenMenuId(null);
+                  setMenuPosition(null);
+                  return;
+                }
+                menuAnchorRef.current = event.currentTarget;
+                setMenuPosition(
+                  placeMenu(
+                    event.currentTarget.getBoundingClientRect(),
+                    SESSION_MENU_WIDTH,
+                  ),
+                );
+                setOpenMenuId(session.session_id);
+              }}
+              className={`rounded p-1 hover:bg-[var(--muted)] ${timeline ? "absolute right-0" : ""} ${
+                menuOpen
+                  ? "opacity-100"
+                  : "opacity-0 group-hover/session:opacity-100 focus:opacity-100"
+              }`}
+              aria-label={t("Conversation actions")}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+            >
+              <MoreHorizontal size={13} />
+            </button>
+          )}
         </div>
 
         {menuOpen && menuPosition && typeof document !== "undefined"
@@ -450,160 +497,61 @@ export default function OrganizedSessionList({
                     : undefined,
                   transformOrigin: menuPosition.openUpward ? "bottom" : "top",
                 }}
-                className="fixed z-[100] w-60 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--popover)] p-2 text-[12px] shadow-xl"
+                className={SESSION_MENU_SURFACE}
               >
-                <MenuButton
-                  icon={editing ? Check : Pencil}
-                  label={t("Rename chat")}
-                  onClick={() => {
+                <SessionActionsMenuItems
+                  session={session}
+                  courses={courses}
+                  workspaces={workspaces}
+                  live={liveSessionIds?.has(session.session_id)}
+                  moving={movingWorkspace}
+                  renaming={editing}
+                  onRename={() => {
                     setDraftTitle(session.title);
                     setEditingId(session.session_id);
+                  }}
+                  onOrganize={(patch) => void onOrganize(session.session_id, patch)}
+                  onMoveWorkspace={(workspaceId) =>
+                    void moveToWorkspace(session.session_id, workspaceId)
+                  }
+                  onDelete={() => void onDelete(session.session_id)}
+                  onDone={() => {
                     setOpenMenuId(null);
                     setMenuPosition(null);
                   }}
-                />
-                <MenuButton
-                  icon={pinned ? PinOff : Pin}
-                  label={pinned ? t("Unpin") : t("Pin")}
-                  onClick={() => {
-                    void onOrganize(session.session_id, { pinned: !pinned });
-                    setOpenMenuId(null);
-                    setMenuPosition(null);
-                  }}
-                />
-                <MenuButton
-                  icon={archived ? ArchiveRestore : Archive}
-                  label={archived ? t("Restore from archive") : t("Archive")}
-                  onClick={() => {
-                    void onOrganize(session.session_id, {
-                      archived: !archived,
-                    });
-                    setOpenMenuId(null);
-                    setMenuPosition(null);
-                  }}
-                />
-                {taskLinks?.task_ids.length ? (
-                  <MenuButton
-                    icon={Unlink}
-                    label={t(taskLinks.status_link_enabled ? "tasks.unlinkStatus" : "tasks.linkStatus")}
-                    onClick={() => {
-                      void setTaskStatusLink(
-                        session.session_id,
-                        sessionWorkspaceId(session),
-                        !taskLinks.status_link_enabled,
-                      ).catch(() => notify(t("tasks.saveError"), { tone: "error" }));
-                      setOpenMenuId(null);
-                      setMenuPosition(null);
-                    }}
-                  />
-                ) : null}
-                {courses.length > 0 ? (
-                  <>
-                    <div className="my-1 border-t border-[var(--border)]/70" />
-                    <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]/65">
-                      {t("Move to course")}
-                    </div>
-                    <MenuButton
-                      icon={GraduationCap}
-                      label={t("Unclassified")}
-                      checked={!session.preferences?.course_id}
-                      onClick={() => {
-                        void onOrganize(session.session_id, { course_id: "" });
-                        setOpenMenuId(null);
-                        setMenuPosition(null);
-                      }}
-                    />
-                    <div>
-                      {courses.map((course) => (
-                        <MenuButton
-                          key={course.id}
-                          color={course.color}
-                          label={course.name}
-                          checked={session.preferences?.course_id === course.id}
+                  extra={
+                    taskLinks?.task_ids.length ? (
+                      <SessionMenuItem
+                        icon={Unlink}
+                        label={t(taskLinks.status_link_enabled ? "tasks.unlinkStatus" : "tasks.linkStatus")}
+                        onClick={() => {
+                          void setTaskStatusLink(
+                            session.session_id,
+                            sessionWorkspaceId(session),
+                            !taskLinks.status_link_enabled,
+                          ).catch(() => notify(t("tasks.saveError"), { tone: "error" }));
+                          setOpenMenuId(null);
+                          setMenuPosition(null);
+                        }}
+                      />
+                    ) : null
+                  }
+                  footer={
+                    onResetOrder && (manualOrder?.length ?? 0) > 0 ? (
+                      <>
+                        <SessionMenuDivider />
+                        <SessionMenuItem
+                          icon={RotateCcw}
+                          label={t("Reset chat order")}
                           onClick={() => {
-                            void onOrganize(session.session_id, {
-                              course_id: course.id,
-                            });
                             setOpenMenuId(null);
                             setMenuPosition(null);
+                            onResetOrder();
                           }}
                         />
-                      ))}
-                    </div>
-                  </>
-                ) : null}
-                {/* Filing a conversation from the list it is filed in.
-                    Archived workspaces are left out: they keep the
-                    conversations they have and stop taking new ones. */}
-                {(sessionWorkspaceId(session) || workspaces.some((workspace) => workspace.kind === "workspace" && !workspace.archived)) ? (
-                  <>
-                    <div className="my-1 border-t border-[var(--border)]/70" />
-                    <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]/65">
-                      {t("Move to workspace")}
-                    </div>
-                    <MenuButton
-                      icon={FolderOpen}
-                      label={t("No workspace")}
-                      disabled={movingWorkspace || session.status === "running" || liveSessionIds?.has(session.session_id)}
-                      checked={!sessionWorkspaceId(session)}
-                      onClick={() => {
-                        void moveToWorkspace(session.session_id, null);
-                        setOpenMenuId(null);
-                        setMenuPosition(null);
-                      }}
-                    />
-                    <div>
-                      {workspaces
-                        .filter(
-                          (workspace) =>
-                            workspace.kind === "workspace" && (!workspace.archived ||
-                            workspace.workspace_id ===
-                              sessionWorkspaceId(session)),
-                        )
-                        .map((workspace) => (
-                          <MenuButton
-                            key={workspace.workspace_id}
-                            icon={Folder}
-                            label={workspace.display_name}
-                            disabled={movingWorkspace || workspace.archived || workspace.status !== "ready" || session.status === "running" || liveSessionIds?.has(session.session_id)}
-                            checked={
-                              sessionWorkspaceId(session) ===
-                              workspace.workspace_id
-                            }
-                            onClick={() => {
-                              void moveToWorkspace(session.session_id, workspace.workspace_id);
-                              setOpenMenuId(null);
-                              setMenuPosition(null);
-                            }}
-                          />
-                        ))}
-                    </div>
-                  </>
-                ) : null}
-                {onResetOrder && (manualOrder?.length ?? 0) > 0 ? (
-                  <>
-                    <div className="my-1 border-t border-[var(--border)]/70" />
-                    <MenuButton
-                      icon={RotateCcw}
-                      label={t("Reset chat order")}
-                      onClick={() => {
-                        setOpenMenuId(null);
-                        setMenuPosition(null);
-                        onResetOrder();
-                      }}
-                    />
-                  </>
-                ) : null}
-                <div className="my-1 border-t border-[var(--border)]/70" />
-                <MenuButton
-                  icon={Trash2}
-                  label={t("Delete chat")}
-                  danger
-                  onClick={() => {
-                    setOpenMenuId(null);
-                    setMenuPosition(null);
-                    void onDelete(session.session_id);
-                  }}
+                      </>
+                    ) : null
+                  }
                 />
               </div>,
               document.body,
@@ -651,7 +599,7 @@ export default function OrganizedSessionList({
   const renderGroup = (entry: SidebarGroupEntry) => {
     const collapsed = collapsedCourses.has(entry.id);
     const recent = entry.group === "recent";
-    const limit = entry.group === "workspace" || recent ? groupLimits[entry.id] ?? 5 : entry.rows.length;
+    const limit = recent ? groupLimits[entry.id] ?? 5 : entry.rows.length;
     // Keep the active conversation visible, including older deep links.
     const activeIndex = entry.rows.findIndex(row => row.session_id === activeSessionId);
     const visibleRows = entry.rows.slice(0, limit);
@@ -673,7 +621,6 @@ export default function OrganizedSessionList({
             : ""
         }`}
       >
-        <div className="group/workspace-heading flex items-center">
         <button
           type="button"
           onPointerDown={sortable ? handlers.onPointerDown : undefined}
@@ -713,13 +660,6 @@ export default function OrganizedSessionList({
             </span>
           ) : null}
         </button>
-        {entry.workspaceId && onNewWorkspaceChat && workspaces.some(workspace =>
-          workspace.workspace_id === entry.workspaceId && !workspace.archived && workspace.status === "ready") && (
-          <button type="button" className="shrink-0 rounded p-1 text-[var(--muted-foreground)] hover:text-[var(--foreground)] sm:opacity-0 group-hover/workspace-heading:opacity-100 focus-visible:opacity-100"
-            aria-label={t("New chat in {{name}}", { name: entry.label })}
-            onClick={() => onNewWorkspaceChat(entry.workspaceId!)}><Plus size={13} /></button>
-        )}
-        </div>
         {collapsed ? null : (
           <div className={recent ? "" : "ml-1.5 border-l border-[var(--border)]/40 pl-1"}>
             {visibleRows.map((session) => renderRow(session))}
@@ -735,15 +675,39 @@ export default function OrganizedSessionList({
     );
   };
 
-  // Workspace sections and unassigned Recent chats share the same list level.
+  if (timeline) {
+    const time = (row: SessionSummary) =>
+      timeline.sort === "createdAt" ? row.created_at : row.updated_at;
+    const found = roots.filter((row) =>
+      matches(displaySessionTitle(row.title, placeholderLabel), timeline.query),
+    );
+    return (
+      <div className="py-0.5">
+        {workspaceMoveError && <p role="alert" className="px-2 py-1 text-xs text-[var(--destructive)]">{workspaceMoveError}</p>}
+        <RecordGroups
+          rows={found
+            .filter((row) => !row.preferences?.pinned)
+            .sort((a, b) => time(b) - time(a))}
+          lead={{
+            label: t("navigation.pinned"),
+            rows: found.filter((row) => row.preferences?.pinned),
+          }}
+          view={timeline}
+          time={time}
+          renderRow={(row) => renderRow(row)}
+          empty={
+            <p className="dt-navigation-empty">
+              {timeline.query ? t("navigation.noResults") : emptyLabel ?? t("navigation.noSessions")}
+            </p>
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="py-0.5">
       {workspaceMoveError && <p role="alert" className="px-2 py-1 text-xs text-[var(--destructive)]">{workspaceMoveError}</p>}
-      {groupWorkspaces && workspaceHeading && entries.some(entry => entry.kind === "group" && entry.group === "workspace") && (
-        <h2 className="dt-projects-heading">
-          {t("navigation.projects")}
-        </h2>
-      )}
       {entries.map((entry) =>
         entry.kind === "group"
           ? renderGroup(entry)
@@ -775,7 +739,6 @@ export default function OrganizedSessionList({
 function GroupMark({ entry }: { entry: SidebarGroupEntry }) {
   return (
     <span className="flex w-3 shrink-0 items-center justify-center">
-      {entry.group === "workspace" ? <FolderOpen size={12} aria-hidden /> : null}
       {entry.group === "course" ? (
         <span
           aria-hidden
@@ -784,48 +747,5 @@ function GroupMark({ entry }: { entry: SidebarGroupEntry }) {
         />
       ) : null}
     </span>
-  );
-}
-
-function MenuButton({
-  icon: Icon,
-  label,
-  color,
-  checked = false,
-  danger = false,
-  disabled = false,
-  onClick,
-}: {
-  icon?: typeof Pencil;
-  label: string;
-  color?: string;
-  checked?: boolean;
-  danger?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      disabled={disabled}
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[var(--muted)] disabled:opacity-50 ${
-        danger ? "text-[var(--destructive)]" : "text-[var(--foreground)]"
-      }`}
-    >
-      {color ? (
-        <span
-          className="h-3 w-1 rounded-full"
-          style={{ backgroundColor: color }}
-        />
-      ) : Icon ? (
-        <Icon size={13} strokeWidth={1.7} />
-      ) : (
-        <span className="w-3" />
-      )}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {checked ? <Check size={12} /> : null}
-    </button>
   );
 }

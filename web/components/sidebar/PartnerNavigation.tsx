@@ -1,11 +1,12 @@
 'use client'
 import { useTranslation } from 'react-i18next'
-import { NavigationRow, Status } from './NavigationPrimitives'
+import { NavigationRow, Status, matches } from './NavigationPrimitives'
 import { PartnerRoster } from './PartnerRoster'
-import { useState } from 'react'
+import { RecordGroups, RecordHeader, RecordTime, useRecordView } from './RecordList'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { Plus, ChevronDown, ChevronRight, Users } from 'lucide-react'
+import { Plus, ChevronRight, MessageCircle, Users } from 'lucide-react'
+import PartnerAvatar from '@/components/partners/PartnerAvatar'
 import { usePartnerNavigation } from '@/hooks/usePartnerNavigation'
 import { partnerSessionHref } from '@/lib/navigation'
 
@@ -14,8 +15,12 @@ export function PartnerNavigation({ active = true }: { active?: boolean }) {
   const search = useSearchParams()
   const pathname = usePathname()
   const { data, loading, error, retry } = usePartnerNavigation(active)
-  const [limit, setLimit] = useState(30)
+  const view = useRecordView('deeptutor.navigation.partners.sort')
   const { partners, groups, sessions } = data
+  const partnersById = new Map(partners.map(partner => [partner.partner_id, partner]))
+  const sessionRows = sessions.filter(row =>
+    matches(`${row.title} ${row.owner_name}`, view.query)
+  )
   return (
     <div className="dt-partner-navigation">
       <section className="dt-partner-preview" aria-labelledby="partner-preview-title">
@@ -92,13 +97,15 @@ export function PartnerNavigation({ active = true }: { active?: boolean }) {
           </p>
         )}
       </section>
-      <section className="dt-partner-sessions" aria-labelledby="partner-sessions-title">
-        <div className="dt-navigation-heading">
-          <h2 id="partner-sessions-title">
-            {t('navigation.partnerSessions')}{' '}
-            <span className="dt-navigation-count">{sessions.length}</span>
-          </h2>
-        </div>
+      <section className="dt-partner-sessions" aria-label={t('navigation.partnerSessions')}>
+        <RecordHeader
+          title={t('navigation.partnerSessions')}
+          count={sessionRows.length}
+          view={view}
+          searchLabel={t('navigation.searchPartnerSessions')}
+          // Partner transcripts record their last activity only.
+          sorts={['updatedAt']}
+        />
         <div
           className="dt-partner-session-list"
           tabIndex={0}
@@ -106,34 +113,46 @@ export function PartnerNavigation({ active = true }: { active?: boolean }) {
           aria-label={t('navigation.partnerSessions')}
         >
           <Status loading={loading} error={error || data.unavailable.length > 0} retry={retry} />
-          {sessions.slice(0, limit).map(row => {
-            const href = partnerSessionHref(row)
-            return (
-              <NavigationRow
-                key={`${row.kind}:${row.owner_id}:${row.session_key}`}
-                href={href}
-                label={row.title || t('New conversation')}
-                detail={row.owner_name}
-                active={
-                  pathname === href.split('?')[0] && search.get('session') === row.session_key
-                }
-              />
-            )
-          })}
-          {!loading && !sessions.length && !error && (
-            <p className="dt-navigation-empty">
-              {t('navigation.noSessions')}
-            </p>
-          )}
-          {sessions.length > limit && (
-            <button
-              className="dt-navigation-row w-full"
-              onClick={() => setLimit(value => value + 30)}
-            >
-              <ChevronDown size={15} />
-              {t('Show more')}
-            </button>
-          )}
+          <RecordGroups
+            rows={sessionRows}
+            view={view}
+            time={row => row.updated_at}
+            renderRow={row => {
+              const href = partnerSessionHref(row)
+              const partner = row.kind === 'partner' ? partnersById.get(row.owner_id) : undefined
+              return (
+                <NavigationRow
+                  key={`${row.kind}:${row.owner_id}:${row.session_key}`}
+                  href={href}
+                  label={row.title || t('New conversation')}
+                  detail={row.owner_name}
+                  icon={row.kind === 'group' ? Users : MessageCircle}
+                  active={
+                    pathname === href.split('?')[0] && search.get('session') === row.session_key
+                  }
+                  trailing={<RecordTime seconds={row.updated_at} />}
+                >
+                  {partner ? (
+                    <PartnerAvatar
+                      name={partner.name}
+                      emoji={partner.emoji}
+                      image={partner.avatar}
+                      color={partner.color}
+                      size={16}
+                    />
+                  ) : undefined}
+                </NavigationRow>
+              )
+            }}
+            empty={
+              !loading &&
+              !error && (
+                <p className="dt-navigation-empty">
+                  {t(view.query ? 'navigation.noResults' : 'navigation.noSessions')}
+                </p>
+              )
+            }
+          />
         </div>
       </section>
     </div>

@@ -5,13 +5,12 @@ import { COMMAND_CONFIRMATION_FAILED } from "@/features/chat/transport/command-d
 import { ResourceReuseContext, useResourceReusePolicy } from "@/components/chat/home/ResourceReuse";
 import { retainedKnowledgeBases } from "@/lib/resource-reuse";
 import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
-import { scopedUrl } from "@/lib/workspace-scope";
+import { navigateTask, scopedUrl } from "@/lib/workspace-scope";
 import { watchingRoute } from "@/lib/learning-routes";
 
 import { useChatWorkspaces } from "@/hooks/useChatWorkspaces";
 import { useComposerResources } from "@/hooks/useComposerResources";
-import { useWorkspaceBinding } from "@/hooks/useWorkspaceBinding";
-import { useSearchParams } from "next/navigation";
+import { useActiveWorkspaceId } from "@/hooks/useActiveWorkspaceId";
 import dynamic from "next/dynamic";
 import {
   type KeyboardEvent,
@@ -29,7 +28,6 @@ import {
   GraduationCap,
   NotebookPen,
   PenLine,
-  type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { SelectedRecord } from "@/lib/notebook-selection-types";
@@ -61,8 +59,12 @@ import {
   GeogebraTabProvider,
   useGeogebraTabOpener,
 } from "@/context/GeogebraTabContext";
-import { BookmarkPlus, ChevronRight, Download, FolderOpen, PanelRight } from "lucide-react";
-import Link from "next/link";
+import { Archive, PanelRight } from "lucide-react";
+import ChatSessionMenu from "@/features/chat/components/ChatSessionMenu";
+import HeaderActionButton from "@/features/chat/components/HeaderActionButton";
+import { useSessionOrganization } from "@/hooks/useSessionOrganization";
+import { SHORTCUTS, matchesShortcut } from "@/lib/shortcuts";
+import { sessionRoute } from "@/lib/mastery-session";
 import {
   useChatStateAdapter,
   type MessageAttachment,
@@ -102,6 +104,7 @@ import { consumePendingPrompt } from "@/lib/pending-prompt";
 import {
   fetchSessionAskHint,
   updateSessionOrganization,
+  type SessionDetail,
 } from "@/lib/session-api";
 import {
   DEFAULT_QUIZ_CONFIG,
@@ -255,8 +258,7 @@ interface KnowledgeBase {
 
 export default function ChatWorkspace() {
   const { router, sessionId: sessionIdParam } = useChatRouteSession();
-  const searchParams = useSearchParams();
-  const requestedWorkspaceId = searchParams.get("dt_workspace") ?? searchParams.get("workspace") ?? null;
+  const requestedWorkspaceId = useActiveWorkspaceId() || null;
   const { t } = useTranslation();
   const {
     capabilities,
@@ -269,10 +271,10 @@ export default function ChatWorkspace() {
     state,
     setTools,
     setCapability,
-    configureSession,
     setKBs,
     setLLMSelection,
     setPersonaSelection,
+    setAnswerBy,
     setResourceSelection,
     setReplyLanguageOverride,
     sendMessage,
@@ -290,6 +292,7 @@ export default function ChatWorkspace() {
     releaseMessageTrace,
     renameSessionTitle,
     setCourseId,
+    configureSession,
   } = useChatStateAdapter();
 
   const entrySessionId = useRef(state.sessionId);
@@ -348,8 +351,7 @@ export default function ChatWorkspace() {
   // Which workspace's files this conversation shares. The list is shared with
   // the sidebar groups and the settings page through one hook, so a workspace
   // created or renamed elsewhere shows up here without a reload.
-  const { workspaces, error: workspaceListError } = useChatWorkspaces();
-  const { selectWorkspace: handleSelectWorkspace, error: workspaceError, pending: workspacePending } = useWorkspaceBinding(state, configureSession);
+  const { workspaces } = useChatWorkspaces();
   // What the composer's skill / MCP pickers may offer, clipped to what this
   // conversation's workspace already allows.
   const resourceCatalog = useComposerResources(state.workspaceId, workspaces);
@@ -357,15 +359,6 @@ export default function ChatWorkspace() {
   const draftTaskIds = useMemo(
     () => draftTaskSelections[state.sessionKey] ?? [],
     [draftTaskSelections, state.sessionKey],
-  );
-  const activeWorkspace = useMemo(
-    () =>
-      state.workspaceId
-        ? (workspaces.find(
-            (row) => row.workspace_id === state.workspaceId,
-          ) ?? null)
-        : null,
-    [state.workspaceId, workspaces],
   );
   // The course this conversation was *launched* into, and whether its defaults
   // have been applied. A course declares the mode and persona its conversations
@@ -851,6 +844,68 @@ export default function ChatWorkspace() {
     setSessionTitleDraft(displaySessionTitle);
     setSessionTitleEditing(true);
   }, [canRenameSession, displaySessionTitle]);
+
+  // The header's "⋯" acts on the open conversation the way its sidebar row
+  // does; both read and write the same organization and hear each other
+  // through the session-change event.
+  const sessionStoreId = state.workspaceId ?? "";
+  const { row: sessionOrganization, apply: applySessionOrganization } =
+    useSessionOrganization(state.sessionId, sessionStoreId);
+  const sessionArchived = Boolean(sessionOrganization?.preferences?.archived);
+  const restoreArchivedSession = useCallback(() => {
+    const sid = state.sessionId;
+    if (!sid) return;
+    void updateSessionOrganization(sid, { archived: false }, sessionStoreId)
+      .then(applySessionOrganization)
+      .catch(() => notify(t("Couldn't update this chat"), { tone: "error" }));
+  }, [applySessionOrganization, sessionStoreId, state.sessionId, t]);
+  const handleSessionMoved = useCallback(
+    (row: SessionDetail) => {
+      const destination = row.preferences?.workspace_id || null;
+      applySessionOrganization({ ...row, content_workspace_id: destination || "" });
+      configureSession({ workspaceId: destination }, state.sessionKey);
+      navigateTask(
+        sessionRoute({
+          ...row,
+          message_count: row.messages?.length ?? 0,
+          last_message: "",
+          content_workspace_id: destination || "",
+        }),
+        router.push,
+      );
+    },
+    [applySessionOrganization, configureSession, router, state.sessionKey],
+  );
+  const handleSessionDeleted = useCallback(() => {
+    cancelStreamingTurn();
+    newSession({ workspaceId: state.workspaceId });
+    navigateTask("/chat", router.push);
+  }, [cancelStreamingTurn, newSession, router, state.workspaceId]);
+
+  // What a Little Tutor side chat opened from the viewer is about: this
+  // conversation up to the tip of the branch on screen. Optimistic rows have
+  // negative ids and are not on the server yet, so the tip is the last
+  // persisted one; none yet means nothing to talk about.
+  const viewerConversation = useMemo(() => {
+    if (!state.sessionId) return null;
+    for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+      const id = state.messages[index]?.id;
+      if (typeof id === "number" && id > 0) {
+        return { title: displaySessionTitle, leafMessageId: id, language: state.language };
+      }
+    }
+    return null;
+  }, [displaySessionTitle, state.language, state.messages, state.sessionId]);
+
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (!matchesShortcut(event, SHORTCUTS.sideChat)) return;
+      event.preventDefault();
+      viewerPanelRef.current?.openSideChatTab();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const cancelSessionTitleEdit = useCallback(() => {
     skipTitleCommitRef.current = true;
     setSessionTitleDraft(displaySessionTitle);
@@ -1832,6 +1887,10 @@ export default function ChatWorkspace() {
   const [subagentBudget, setSubagentBudget] = useState<number | null>(null);
   const [selectedPartner, setSelectedPartner] = useState<string | null>(null);
   const [selectedPartnerGroup, setSelectedPartnerGroup] = useState<string | null>(null);
+  // Who answers instead of DeepTutor. The conversation holds it, so a
+  // hand-over lasts until the learner takes it back, survives the draft
+  // becoming a session, and never follows them to another chat.
+  const answerBy = state.answerBy;
 
   useEffect(() => {
     void getSubagentSettings()
@@ -2198,14 +2257,20 @@ export default function ChatWorkspace() {
     },
     [setKBs, state.knowledgeBases, agentNameSet],
   );
+  // Asking someone and handing the turn to someone exclude each other, and
+  // so do the three ways of asking: one helper per turn.
   const handleSelectPartnerGroup = useCallback((id: string | null) => {
     setSelectedPartnerGroup(id);
-    if (id) { setSelectedPartner(null); handleSelectAgent(null); }
-  }, [handleSelectAgent]);
+    if (id) { setSelectedPartner(null); handleSelectAgent(null); setAnswerBy(null); }
+  }, [handleSelectAgent, setAnswerBy]);
   const handleSelectPartner = useCallback((id: string | null) => {
     setSelectedPartner(id);
-    if (id) { setSelectedPartnerGroup(null); handleSelectAgent(null); }
-  }, [handleSelectAgent]);
+    if (id) { setSelectedPartnerGroup(null); handleSelectAgent(null); setAnswerBy(null); }
+  }, [handleSelectAgent, setAnswerBy]);
+  const handleAnswerBy = useCallback((value: string | null) => {
+    setAnswerBy(value);
+    if (value) { setSelectedPartner(null); setSelectedPartnerGroup(null); handleSelectAgent(null); }
+  }, [handleSelectAgent, setAnswerBy]);
 
   // Honor `?agent=<name>` once its connection KB has loaded: preselect it so a
   // partner opened from the partner list starts the chat already targeting it.
@@ -2389,28 +2454,6 @@ export default function ChatWorkspace() {
           >
             <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-6 pt-3 pb-0">
               <div className="group/title min-w-0 flex flex-1 items-center gap-2">
-                {/* Where this conversation lives, ahead of its title — the same
-                    breadcrumb the composer pill writes, so an opened
-                    conversation says which workspace's files it can see without
-                    the learner opening a menu to find out. */}
-                {activeWorkspace ? (
-                  <Tooltip label={activeWorkspace.path} side="bottom">
-                    <Link
-                      href="/settings/workspace"
-                      className="inline-flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-[12.5px] text-[var(--muted-foreground)] transition hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
-                    >
-                      <FolderOpen size={13} strokeWidth={1.7} />
-                      <span className="max-w-[140px] truncate">
-                        {activeWorkspace.display_name}
-                      </span>
-                      <ChevronRight
-                        size={12}
-                        strokeWidth={2}
-                        className="-mr-1 opacity-60"
-                      />
-                    </Link>
-                  </Tooltip>
-                ) : null}
                 {sessionTitleEditing ? (
                   <input
                     ref={titleInputRef}
@@ -2455,21 +2498,24 @@ export default function ChatWorkspace() {
                     {sessionTitleError}
                   </span>
                 ) : null}
+                {sessionArchived ? (
+                  // Archiving from the header leaves the conversation open;
+                  // this is where it says so, and the way back.
+                  <span className="inline-flex shrink-0 items-center gap-1.5 text-[12px] text-[var(--muted-foreground)]">
+                    <Archive size={12} strokeWidth={1.8} aria-hidden="true" />
+                    {t("Archived")}
+                    <span aria-hidden="true">·</span>
+                    <button
+                      type="button"
+                      onClick={restoreArchivedSession}
+                      className="rounded font-medium text-[var(--foreground)] underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
+                    >
+                      {t("Restore")}
+                    </button>
+                  </span>
+                ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-0.5">
-                <HeaderActionButton
-                  onClick={() => setShowSaveModal(true)}
-                  disabled={!chatSavePayload}
-                  icon={BookmarkPlus}
-                  label={t("Save to Notebook")}
-                />
-                <HeaderActionButton
-                  onClick={handleDownloadMarkdown}
-                  disabled={!state.messages.length}
-                  icon={Download}
-                  label={t("Download Markdown")}
-                  title={t("Download chat history as Markdown")}
-                />
                 <HeaderActionButton
                   onClick={() => viewerPanelRef.current?.openMarkdownNoteTab()}
                   icon={NotebookPen}
@@ -2482,6 +2528,23 @@ export default function ChatWorkspace() {
                   icon={PanelRight}
                   label={t("Activity")}
                   title={t("Session activity, attachments & previews")}
+                />
+                <ChatSessionMenu
+                  sessionId={state.sessionId}
+                  workspaceId={sessionStoreId}
+                  row={sessionOrganization}
+                  title={displaySessionTitle}
+                  courses={courses}
+                  workspaces={workspaces}
+                  live={state.isStreaming}
+                  canSave={Boolean(chatSavePayload)}
+                  onSave={() => setShowSaveModal(true)}
+                  canExport={state.messages.length > 0}
+                  onExport={handleDownloadMarkdown}
+                  onRename={startSessionTitleEdit}
+                  onOrganized={applySessionOrganization}
+                  onMoved={handleSessionMoved}
+                  onDeleted={handleSessionDeleted}
                 />
               </div>
             </div>
@@ -2497,7 +2560,9 @@ export default function ChatWorkspace() {
                   </div>
                 </div>
               ) : !hasMessages ? (
-                <div className="flex w-full flex-1 min-h-0 items-end justify-center pb-14 animate-fade-in px-6">
+                // Clipped rather than pushed under the header when a short
+                // window leaves the greeting no room.
+                <div className="flex w-full flex-1 min-h-0 items-end justify-center overflow-hidden pb-14 animate-fade-in px-6">
                   <div className="w-full max-w-[960px] flex items-center justify-center gap-4">
                     <img
                       src="/logo_black.png"
@@ -2682,17 +2747,7 @@ export default function ChatWorkspace() {
                 // onSelectCourse intentionally omitted: hides the CoursePill
                 // entry point while courseId keeps flowing to the backend for
                 // conversations already bound (e.g. via a course deep link).
-                workspaces={workspaces}
                 workspaceId={state.workspaceId || ""}
-                workspaceError={workspaceError || workspaceListError}
-                workspacePending={workspacePending}
-                // Immersive modes own their own material; a workspace binding
-                // there would compete with it, so they get no pill.
-                onSelectWorkspace={
-                  !state.workspaceMode
-                    ? handleSelectWorkspace
-                    : undefined
-                }
                 spaceMenuOpen={spaceMenuOpen}
                 hasMessages={hasMessages}
                 attachments={attachments}
@@ -2702,9 +2757,11 @@ export default function ChatWorkspace() {
                 knowledgeBases={kbOptions}
                 connectedAgents={agentOptions}
                 selectedAgent={selectedPartnerGroup || selectedPartner ? null : selectedAgent}
-                onSelectAgent={(name) => { if (name) { setSelectedPartnerGroup(null); setSelectedPartner(null); } handleSelectAgent(name); }}
+                onSelectAgent={(name) => { if (name) { setSelectedPartnerGroup(null); setSelectedPartner(null); setAnswerBy(null); } handleSelectAgent(name); }}
         selectedPartnerGroup={selectedPartnerGroup}
         onSelectPartnerGroup={handleSelectPartnerGroup}
+        answerBy={answerBy}
+        onAnswerByChange={handleAnswerBy}
         selectedPartner={selectedPartner}
         onSelectPartner={handleSelectPartner}
                 subagentBudget={subagentBudget}
@@ -2788,16 +2845,14 @@ export default function ChatWorkspace() {
                 inputPlaceholder={askHint || undefined}
                 inputPlaceholderCompletion={askHint}
               />
-              {/* Starter chips sit between the composer and the spacer, so they
-                ride up with the composer on the empty screen and disappear the
-                moment the conversation has a first message. Clicking one sends
-                it through the normal send path: this page is already a draft
-                session when it has no messages, so that both creates the
-                session and starts it on the topic. */}
+              {/* Starters sit between the composer and the spacer, so they ride
+                up with the composer on the empty screen and disappear the
+                moment the conversation has a first message. Picking one only
+                writes it into the composer: sending stays the learner's. */}
               {!hasMessages ? (
                 <StarterSuggestions
                   workspaceId={state.workspaceId || ""}
-                  onPick={(prompt) => void handleSend(prompt)}
+                  onPick={handlePrefillComposer}
                   disabled={state.isStreaming}
                 />
               ) : null}
@@ -2866,6 +2921,10 @@ export default function ChatWorkspace() {
               ref={viewerPanelRef}
               open={viewerPanelOpen && previewSource === null}
               sessionId={state.sessionId}
+              sessionKey={state.sessionKey}
+              reboundFromKey={state.boundFromKey ?? null}
+              conversation={viewerConversation}
+              workspaceId={sessionStoreId}
               activity={sessionActivity}
               configSection={capabilityConfigSection}
               onClose={() => setViewerOpen(false)}
@@ -2965,45 +3024,3 @@ function SubagentTabWatcher({
   return null;
 }
 
-/**
- * Header action button that auto-collapses to icon-only when the chat
- * column gets squeezed (Viewer panel open, narrow viewport, etc.). The
- * The shared tooltip keeps the full hint available on pointer, keyboard and
- * touch. Optional `active` paints the button with a primary tint, used by the
- * panel-toggle buttons to surface their on/off state.
- */
-// Claude-style icon-only header action: bare 16px glyph, function revealed
-// by an instant tooltip; active state gets a primary tint.
-function HeaderActionButton({
-  onClick,
-  disabled,
-  active,
-  icon: Icon,
-  label,
-  title,
-}: {
-  onClick: () => void;
-  disabled?: boolean;
-  active?: boolean;
-  icon: LucideIcon;
-  label: string;
-  title?: string;
-}) {
-  return (
-    <Tooltip label={title ?? label} side="bottom">
-      <button
-        onClick={onClick}
-        disabled={disabled}
-        aria-label={label}
-        aria-pressed={active}
-        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-[background-color,color,transform] duration-150 active:scale-90 disabled:cursor-not-allowed disabled:opacity-40 ${
-          active
-            ? "bg-[var(--primary)]/10 text-[var(--primary)]"
-            : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)] disabled:hover:bg-transparent disabled:hover:text-[var(--muted-foreground)]"
-        }`}
-      >
-        <Icon size={16} strokeWidth={1.7} className="shrink-0" />
-      </button>
-    </Tooltip>
-  );
-}

@@ -186,6 +186,10 @@ export interface QuizFollowupController {
           answers?: Array<{ questionId: string; text: string }>;
         },
   ): Promise<boolean>;
+  /** Stop the thread's running turn — the composer's Stop button. Same
+   *  sequence as the main chat: ask the server to cancel, then drop the
+   *  socket so nothing more streams into the thread. */
+  cancelTurn(questionKey: string): void;
   /** Tab open helper — forwards to whoever registered an open handler. */
   openFollowupTab(context: QuizFollowupTabContext): void;
   /**
@@ -573,6 +577,29 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
     [sendThroughRunner, updateThread],
   );
 
+  const cancelTurn = useCallback(
+    (key: string) => {
+      const current = threadsRef.current[key];
+      const turnId = current?.activeTurnId;
+      const runner = runnersRef.current.get(key);
+      if (runner) {
+        if (runner.client.connected && turnId) {
+          runner.client.send({ type: "cancel_turn", turn_id: turnId });
+        }
+        runner.client.disconnect();
+        runnersRef.current.delete(key);
+      }
+      if (!current?.isStreaming) return;
+      updateThread(key, (prev) => ({
+        ...prev,
+        isStreaming: false,
+        currentStage: "",
+        activeTurnId: null,
+      }));
+    },
+    [updateThread],
+  );
+
   const openFollowupTab = useCallback((context: QuizFollowupTabContext) => {
     entryIdsRef.current.set(context.questionKey, context.notebookEntryId);
     const handler = openTabHandlerRef.current;
@@ -622,6 +649,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
       hydrateThread,
       sendMessage,
       submitAskUserReply,
+      cancelTurn,
       openFollowupTab,
       setOpenTabHandler,
       getAllThreads,
@@ -632,6 +660,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
       hydrateThread,
       sendMessage,
       submitAskUserReply,
+      cancelTurn,
       openFollowupTab,
       setOpenTabHandler,
       getAllThreads,
@@ -655,6 +684,12 @@ export function useQuizFollowupController(): QuizFollowupController {
     );
   }
   return ctx;
+}
+
+/** The controller where one is mounted — the viewer panel also renders in
+ *  places (tests, the reading page) that have no follow-up threads. */
+export function useOptionalQuizFollowupController(): QuizFollowupController | null {
+  return useContext(QuizFollowupCtx);
 }
 
 /** Returns the live thread snapshot for a question key, re-rendering on

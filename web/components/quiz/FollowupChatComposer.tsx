@@ -40,6 +40,17 @@ const FOLLOWUP_CAPABILITIES = [
   },
 ];
 
+/** One prompt per thing the thread is pinned to; the tab's empty state reads
+ *  the same line, so the two never disagree. */
+export function followupPlaceholder(context: QuizFollowupTabContext): string {
+  if (!context.tutorSelection) {
+    return "Ask anything about this question, your answer, or the AI judgment.";
+  }
+  return context.tutorSelection.scope === "conversation"
+    ? "Ask anything about this conversation."
+    : "Ask anything about the selected text.";
+}
+
 interface FollowupChatComposerProps {
   context: QuizFollowupTabContext;
 }
@@ -140,10 +151,8 @@ function FollowupChatComposerImpl({ context }: FollowupChatComposerProps) {
   );
 
   const handleCancelStreaming = useCallback(() => {
-    // The follow-up runner is owned by the controller; we don't expose
-    // a hard cancel from the public surface. Treat this as a no-op for
-    // now — the user can refresh or close the tab to recover.
-  }, []);
+    controller.cancelTurn(context.questionKey);
+  }, [context.questionKey, controller]);
 
   const hasMessages = useMemo(
     () => thread.messages.some((m) => m.role !== "system"),
@@ -158,9 +167,7 @@ function FollowupChatComposerImpl({ context }: FollowupChatComposerProps) {
       awaitingUserReply={awaitingUserReply}
       onSubmit={handleSubmit}
       onCancelStreaming={handleCancelStreaming}
-      inputPlaceholder={t(
-        "Ask anything about this question, your answer, or the AI judgment.",
-      )}
+      inputPlaceholder={t(followupPlaceholder(context))}
     />
   );
 }

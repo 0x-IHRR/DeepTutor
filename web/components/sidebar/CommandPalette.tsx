@@ -1,17 +1,19 @@
 'use client'
 
+import { CalendarDays } from 'lucide-react'
+
 import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bot, Columns3, CornerDownLeft, MessageCircle, PenLine, Search, Settings, Users, type LucideIcon } from 'lucide-react'
+import { Columns3, CornerDownLeft, MessageCircle, PenLine, Search, Settings, Users, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import PartnerAvatar from '@/components/partners/PartnerAvatar'
-import { DASHBOARD_GROUPS, visibleGroups } from '@/components/space/dashboard-groups'
+import { DASHBOARD_GROUPS, PERSONALIZATION_GROUPS, visibleGroups } from '@/components/space/dashboard-groups'
 import { useCapabilityFilter } from '@/features/capabilities/useCapabilityCatalog'
 import { useLearningIndex } from '@/hooks/useLearningIndex'
 import { usePartnerNavigation } from '@/hooks/usePartnerNavigation'
 import { allLearningActivity } from '@/lib/learning-dashboard'
-import { scopedUrl, navigateTask } from '@/lib/workspace-scope'
+import { navigateTask } from '@/lib/workspace-scope'
 import type { SessionSummary } from '@/lib/session-api'
 import { learningSurface } from '@/components/learning/surfaces'
 import { navVisibleUnderPolicy } from './nav-entries'
@@ -80,20 +82,27 @@ export function CommandPalette({
       { id: 'new-chat', label: t('navigation.newChat'), icon: glyph(PenLine), run: onNewChat },
       ...categories.map(item => ({ id: `category:${item.id}`, label: t(item.label), icon: glyph(item.icon), run: go(item.href) })),
       ...[
-        { href: '/kanban', label: 'Task Board', icon: Columns3 },
+        { href: '/calendar', label: 'Calendar', icon: CalendarDays },
+              { href: '/kanban', label: 'Task Board', icon: Columns3 },
         { href: '/co-writer', label: 'Co-Writer', icon: PenLine },
-        { href: '/agents', label: 'My Agents', icon: Bot },
       ]
         .filter(item => navVisibleUnderPolicy(item.href, allowedSurfaces))
         .map(item => ({ id: item.href, label: t(item.label), icon: glyph(item.icon), run: go(item.href) })),
-      ...visibleGroups(DASHBOARD_GROUPS, available).flatMap(group =>
-        group.items.map(row => ({
-          id: `resource:${row.key}`,
-          label: zh ? row.title.zh : row.title.en,
-          detail: t('navigation.resources'),
-          icon: glyph(row.icon),
-          run: go(scopedUrl(row.href)),
-        }))
+      ...[
+        { groups: DASHBOARD_GROUPS, detail: t('navigation.resources') },
+        { groups: PERSONALIZATION_GROUPS, detail: t('navigation.personalization') },
+      ].flatMap(({ groups, detail }) =>
+        visibleGroups(groups, available).flatMap(group =>
+          group.items
+            .filter(row => row.href !== '/agents' || navVisibleUnderPolicy(row.href, allowedSurfaces))
+            .map(row => ({
+              id: `resource:${row.key}`,
+              label: zh ? row.title.zh : row.title.en,
+              detail,
+              icon: glyph(row.icon),
+              run: go(row.href),
+            }))
+        )
       ),
       { id: 'settings', label: t('Settings'), icon: glyph(Settings), run: go('/settings') },
     ]
@@ -133,7 +142,7 @@ export function CommandPalette({
     const pick = (items: PaletteItem[], idle: number) =>
       q ? items.filter(item => includes(`${item.label} ${item.detail ?? ''}`, q)).slice(0, 6) : items.slice(0, idle)
     return [
-      { title: t('navigation.jumpTo'), items: pick(places, 1 + categories.length + 3) },
+      { title: t('navigation.jumpTo'), items: pick(places, 1 + categories.length + 2) },
       { title: t('Conversations'), items: pick(conversations, 5) },
       { title: t('navigation.learning'), items: pick(learning, q ? 6 : 0) },
       { title: t('navigation.partners'), items: pick(partners, q ? 6 : 0) },

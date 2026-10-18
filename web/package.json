@@ -39,6 +39,7 @@
     "chart.js": "^4.5.1",
     "clsx": "^2.1.1",
     "cytoscape": "^3.33.1",
+    "date-fns": "^4.4.0",
     "docx-preview": "^0.3.7",
     "epubjs": "^0.3.93",
     "exceljs": "^4.4.0",

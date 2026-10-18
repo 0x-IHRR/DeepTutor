@@ -15,15 +15,24 @@
  */
 
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
 } from "react";
-import { GraduationCap, Sparkles } from "lucide-react";
+import {
+  HelpCircle,
+  MessagesSquare,
+  PenLine,
+  Sparkles,
+  TextQuote,
+  type LucideIcon,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
+import { ACTIVITY_TILE } from "@/components/chat/home/SessionActivityPanel";
 import FollowupChatComposer from "@/components/quiz/FollowupChatComposer";
 import {
   AskUserOptions,
@@ -125,42 +134,13 @@ export default function QuizFollowupTabBody({
 
   const visibleMessages = thread.messages.filter((m) => m.role !== "system");
   const isCoding = context.question.question_type === "coding";
-  const isSelectionTutor = Boolean(context.tutorSelection);
+  const tutor = context.tutorSelection;
+  const isSideChat = tutor?.scope === "conversation";
 
+  // The tab pill already names the thread, so the body opens straight on what
+  // it is pinned to — no title strip repeating the tab.
   return (
     <div className="flex h-full flex-col bg-[var(--card)]">
-      {/* Header strip — mimics a chat-page title bar but with quiz crumbs. */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)]/40 bg-[var(--card)] px-4 py-2.5">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--primary)]/12">
-          {isSelectionTutor ? (
-            <GraduationCap
-              size={15}
-              strokeWidth={1.7}
-              className="text-[var(--primary)]"
-            />
-          ) : (
-            <Sparkles
-              size={14}
-              strokeWidth={1.7}
-              className="text-[var(--primary)]"
-            />
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[12.5px] font-semibold text-[var(--foreground)]">
-            {isSelectionTutor ? t("Little Tutor") : context.tabLabel}
-          </div>
-          <div className="truncate text-[10px] uppercase tracking-wide text-[var(--muted-foreground)]">
-            {isSelectionTutor
-              ? t("Ask about selected text")
-              : t("Follow-up Chat")}
-            {!isSelectionTutor && context.question.question_type
-              ? ` · ${context.question.question_type}`
-              : ""}
-          </div>
-        </div>
-      </div>
-
       {/* Scrollable body: pinned context + chat thread.
           ``data-chat-scroll-root`` opts this surface into the global
           ``overflow-anchor: none`` + ``scroll-behavior: auto`` rule
@@ -170,26 +150,37 @@ export default function QuizFollowupTabBody({
         ref={scrollerRef}
         onScroll={handleScroll}
         data-chat-scroll-root="true"
-        className="flex-1 overflow-y-auto px-4 py-3"
+        className="flex-1 overflow-y-auto px-4 pb-3 pt-1"
       >
-        <div className="mx-auto flex max-w-[640px] flex-col gap-3">
-          <div className="rounded-md border border-[var(--border)]/70 bg-[var(--background)]/70 px-3 py-2">
-            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-              {t(isSelectionTutor ? "Selected text" : "Question")}
-            </div>
-            <div className="text-[13px] leading-relaxed text-[var(--foreground)]">
-              <MarkdownRenderer
-                content={context.question.question}
-                variant="compact"
-              />
-            </div>
-          </div>
-
-          {!isSelectionTutor && (
-            <div className="rounded-md border border-[var(--border)]/70 bg-[var(--background)]/70 px-3 py-2">
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                {t("Your Answer")}
+        <div className="mx-auto flex max-w-[640px] flex-col gap-2.5">
+          {isSideChat ? (
+            <PinnedCard icon={MessagesSquare} label={t("About this conversation")}>
+              <div className="truncate text-[13px] font-medium text-[var(--foreground)]">
+                {tutor?.parentTitle || t("This conversation")}
               </div>
+            </PinnedCard>
+          ) : (
+            <PinnedCard
+              icon={tutor ? TextQuote : HelpCircle}
+              label={
+                tutor
+                  ? t("Selected text")
+                  : [t("Question"), context.question.question_type]
+                      .filter(Boolean)
+                      .join(" · ")
+              }
+            >
+              <div className="text-[13px] leading-relaxed text-[var(--foreground)]">
+                <MarkdownRenderer
+                  content={context.question.question}
+                  variant="compact"
+                />
+              </div>
+            </PinnedCard>
+          )}
+
+          {!tutor && (
+            <PinnedCard icon={PenLine} label={t("Your Answer")}>
               {context.userAnswer ? (
                 <div className="text-[13px] leading-relaxed text-[var(--foreground)]">
                   <MarkdownRenderer
@@ -203,7 +194,7 @@ export default function QuizFollowupTabBody({
                   />
                 </div>
               ) : context.answerImages.length === 0 ? (
-                <div className="text-[12px] italic text-[var(--muted-foreground)]">
+                <div className="text-[12.5px] italic text-[var(--muted-foreground)]">
                   {t("No answer recorded.")}
                 </div>
               ) : null}
@@ -214,7 +205,7 @@ export default function QuizFollowupTabBody({
                     return (
                       <div
                         key={image.id}
-                        className="overflow-hidden rounded-md border border-[var(--border)] bg-[var(--card)]"
+                        className="overflow-hidden rounded-lg bg-[var(--card)]"
                       >
                         {src ? (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -233,33 +224,33 @@ export default function QuizFollowupTabBody({
                   })}
                 </div>
               )}
-            </div>
+            </PinnedCard>
           )}
 
-          {!isSelectionTutor && context.aiJudgment && (
-            <div className="rounded-md border border-[var(--primary)]/30 bg-[var(--primary)]/[0.04] px-3 py-2">
-              <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--primary)]">
-                <Sparkles size={10} />
-                {t("AI Judgment")}
-              </div>
+          {!tutor && context.aiJudgment && (
+            <PinnedCard icon={Sparkles} label={t("AI Judgment")} tone="primary">
               <div className="text-[12.5px] leading-relaxed text-[var(--foreground)]">
                 <MarkdownRenderer
                   content={context.aiJudgment}
                   variant="compact"
                 />
               </div>
-            </div>
+            </PinnedCard>
           )}
 
           <div className="flex flex-col gap-3 py-1">
             {visibleMessages.length === 0 ? (
-              <div className="rounded-md border border-dashed border-[var(--border)] bg-[var(--background)]/40 px-3 py-3 text-[12px] text-[var(--muted-foreground)]">
+              // What this thread can see, so the first question is asked of
+              // the right thing — the composer already says what to type.
+              <p className="px-1 text-[12px] leading-[1.6] text-[var(--muted-foreground)]">
                 {t(
-                  isSelectionTutor
-                    ? "Ask anything about the selected text."
-                    : "Ask anything about this question, your answer, or the AI judgment.",
+                  isSideChat
+                    ? "The Little Tutor has read the whole conversation. Nothing asked here is added to it."
+                    : tutor
+                      ? "The Little Tutor reads only this passage and the message it came from. Nothing asked here is added to the conversation."
+                      : "Ask why an answer was marked, for another explanation, or for a similar question to try.",
                 )}
-              </div>
+              </p>
             ) : (
               visibleMessages.map((message, index) => {
                 if (message.role === "user") {
@@ -293,7 +284,7 @@ export default function QuizFollowupTabBody({
               })
             )}
             {thread.error && (
-              <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] text-red-700 dark:border-red-950/50 dark:bg-red-950/20 dark:text-red-300">
+              <div role="alert" className="rounded-lg bg-red-50 px-2.5 py-1.5 text-[12px] text-red-700 dark:bg-red-950/20 dark:text-red-300">
                 {thread.error}
               </div>
             )}
@@ -305,10 +296,44 @@ export default function QuizFollowupTabBody({
       {/* Composer — the same ChatComposer used on the main chat page,
           wired through FollowupChatComposer to route sends into the
           QuizFollowupController and keep its own state pool. */}
-      <div className="shrink-0 border-t border-[var(--border)]/50 bg-[var(--card)] px-4 pt-3">
+      <div className="shrink-0 bg-[var(--card)] px-4 pt-2">
         <FollowupChatComposer context={context} />
       </div>
     </div>
+  );
+}
+
+/** One thing the thread is pinned to, in the viewer's own tile style. */
+function PinnedCard({
+  icon: Icon,
+  label,
+  tone = "neutral",
+  children,
+}: {
+  icon: LucideIcon;
+  label: string;
+  tone?: "neutral" | "primary";
+  children: ReactNode;
+}) {
+  const primary = tone === "primary";
+  return (
+    <section
+      className={`${
+        primary
+          ? "rounded-xl bg-[color-mix(in_srgb,var(--primary)_6%,transparent)]"
+          : ACTIVITY_TILE
+      } px-3.5 pb-3 pt-2.5`}
+    >
+      <h3
+        className={`mb-1.5 flex items-center gap-1.5 text-[11.5px] font-medium ${
+          primary ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"
+        }`}
+      >
+        <Icon size={12} strokeWidth={1.8} aria-hidden="true" />
+        {label}
+      </h3>
+      {children}
+    </section>
   );
 }
 
