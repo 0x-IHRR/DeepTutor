@@ -102,6 +102,12 @@ class MasteryContextBuilder(ContextBuilder):
         )
 
     async def build(self, *, session_id, leaf_message_id=None, **kwargs):
+        # Retained memory and generation are different budgets: reasoning
+        # providers count hidden tokens in max_tokens too (#1926).
+        configured_limit = getattr(kwargs.get("llm_config"), "max_tokens", None)
+        self._generation_limit = (
+            configured_limit if type(configured_limit) is int and configured_limit > 0 else 8192
+        )
         # The store enforces the active user/session and the selected ancestor
         # chain. No filesystem path, arbitrary session selector, or global search.
         rows = await self.store.get_messages_for_context(
@@ -187,7 +193,13 @@ class MasteryContextBuilder(ContextBuilder):
         # A summary task needs learning evidence, not the full tutor persona,
         # 47 tool schemas, encrypted provider reasoning or current page pixels.
         summary, events = await super()._summarize(
-            source_text=material, summary_budget=summary_budget, replay_request=None, **kwargs
+            source_text=material,
+            summary_budget=summary_budget,
+            generation_budget=min(
+                summary_budget * 2, 8192, getattr(self, "_generation_limit", 8192)
+            ),
+            replay_request=None,
+            **kwargs,
         )
         try:
             data = json.loads(summary)

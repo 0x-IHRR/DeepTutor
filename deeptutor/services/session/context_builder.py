@@ -417,6 +417,7 @@ class ContextBuilder:
         language: str,
         source_text: str,
         summary_budget: int,
+        generation_budget: int | None = None,
         on_event: Callable[[StreamEvent], Awaitable[None]] | None = None,
         replay_request: dict[str, Any] | None = None,
     ) -> tuple[str, list[StreamEvent]]:
@@ -552,7 +553,7 @@ class ContextBuilder:
             async for _c in agent.stream_llm(
                 user_prompt=user_prompt,
                 system_prompt=system_prompt,
-                max_tokens=summary_budget,
+                max_tokens=generation_budget or summary_budget,
                 stage="summarize_context",
                 trace_meta=trace_meta,
                 outcome=outcome,

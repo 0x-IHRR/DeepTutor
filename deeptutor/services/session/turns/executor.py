@@ -218,8 +218,14 @@ class TurnExecutor:
         # body so prompt building, the deferred tool view and ``read_skill``
         # all resolve against the same selection; ContextVars are task-local,
         # so a concurrent turn in another conversation is unaffected.
+        # #1920/#1926: context condensation and pre-capability grading are
+        # part of this turn too; the orchestrator inherits this collector.
+        from deeptutor.services.llm.metrics import TurnUsage, current_usage
         from deeptutor.services.workspace.resources import turn_resource_selection
 
+        usage_token = current_usage.set(
+            TurnUsage(session_id=session_id, turn_id=turn_id, source=capability_name)
+        )
         resource_scope = contextlib.ExitStack()
         resource_scope.enter_context(
             turn_resource_selection(
@@ -1220,6 +1226,8 @@ class TurnExecutor:
                 # open briefly so the later ``session_meta`` title update can
                 # still arrive.
                 try:
+                    current_usage.reset(usage_token)
+                    usage_token = None
                     await self._maybe_generate_session_title(
                         execution=execution,
                         session_id=session_id,
@@ -1404,6 +1412,8 @@ class TurnExecutor:
                     retryable=resolved_retryable,
                 )
         finally:
+            if usage_token is not None:
+                current_usage.reset(usage_token)
             if execution.flush_task is not None:
                 execution.flush_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):

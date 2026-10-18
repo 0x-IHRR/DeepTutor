@@ -375,3 +375,31 @@ async def test_trailing_memory_snapshot_counts_toward_tutoring_budget():
     assert builder._model_tokens([], summary) == _count_model_context_tokens(
         []
     ) + _count_model_context_tokens(summary_snapshot(summary))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("configured_limit, saved", [(8192, True), (3000, False)])
+async def test_reasoning_allowance_does_not_replace_the_retained_memory_budget(
+    monkeypatch, configured_limit, saved
+):
+    """A 4k combined reasoning/output cap repeatedly cut off live JSON memory."""
+    from deeptutor.capabilities.mastery.memory import archive_id
+    from deeptutor.services.session.model_history import history_groups
+
+    async def stream(_self, **kwargs):
+        kwargs["outcome"].finish_reason = "stop" if kwargs["max_tokens"] >= 5000 else "max_tokens"
+        assert kwargs["max_tokens"] <= configured_limit
+        yield memory([archive_id(g) for g in history_groups(builder._summary_rows)])
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    store = store_for(records())
+    builder = MasteryContextBuilder(store)
+    result = await builder.build(
+        session_id="s",
+        llm_config=SimpleNamespace(
+            model="reasoning-model", context_window=272000, max_tokens=configured_limit
+        ),
+    )
+    assert store.update_summary.await_count == int(saved)
+    assert result.token_count <= 20000
+    assert "example 0 failed" in json.dumps(result.history_sources)

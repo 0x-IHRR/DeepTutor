@@ -135,8 +135,18 @@ class ChatOrchestrator:
         async def _run() -> None:
             from deeptutor.services.llm.metrics import TurnUsage, current_usage
 
-            turn_usage = TurnUsage(session_id=context.session_id, turn_id=_turn_id, source=cap_name)
-            usage_token = current_usage.set(turn_usage)
+            turn_usage = current_usage.get()
+            usage_token = None
+            if (
+                turn_usage is None
+                or not _turn_id
+                or turn_usage.turn_id != _turn_id
+                or turn_usage.session_id != context.session_id
+            ):
+                turn_usage = TurnUsage(
+                    session_id=context.session_id, turn_id=_turn_id, source=cap_name
+                )
+                usage_token = current_usage.set(turn_usage)
             status = "completed"
             terminal_error_metadata: dict[str, Any] = {}
             try:
@@ -197,7 +207,8 @@ class ChatOrchestrator:
                         },
                     )
                 )
-                current_usage.reset(usage_token)
+                if usage_token is not None:
+                    current_usage.reset(usage_token)
                 await bus.close()
                 if _turn_id:
                     unregister_bus(_turn_id)
