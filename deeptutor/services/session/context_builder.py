@@ -748,13 +748,16 @@ class ContextBuilder:
         try:
             self._summary_rows = older_unsummarized
             self._summary_prior = stored_summary
+            summary_kwargs: dict[str, Any] = (
+                {"replay_request": replay_request} if replay_request else {}
+            )
             new_summary, events = await self._summarize(
                 session_id=session_id,
                 language=language,
                 source_text="\n\n".join(part for part in merge_parts if part.strip()),
                 summary_budget=summary_budget,
                 on_event=on_event,
-                **({"replay_request": replay_request} if replay_request else {}),
+                **summary_kwargs,
             )
         except Exception as exc:
             summarize_ok = False

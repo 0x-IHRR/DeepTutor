@@ -870,7 +870,7 @@ class MasteryStatusTool(BaseTool):
         }
         interaction = service.store.get_active_interaction(path_id)
         if interaction is not None:
-            pending_interaction = {
+            pending_interaction: dict[str, Any] = {
                 "question_id": interaction.interaction_id,
                 "status": interaction.status.value,
             }
@@ -2981,7 +2981,7 @@ class MasteryReviseTool(BaseTool):
                 content="Module reordering requires action preview followed by a reviewed commit.",
                 success=False,
             )
-        specs = {}
+        specs: dict[str, dict[str, Any]] = {}
         if module_order is None or any(
             kwargs.get(key) is not None
             for key in ("module_id", "modules", "rewrite", "add", "remove")

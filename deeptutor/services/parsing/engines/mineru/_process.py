@@ -7,6 +7,7 @@ import signal
 import subprocess
 import sys
 import time
+from typing import Any
 
 
 @contextmanager
@@ -17,7 +18,12 @@ def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
     assigned = False
     with log_path.open("wb") as output:
         try:
-            kwargs = {"stdout": output, "stderr": subprocess.STDOUT, "shell": False, "env": env}
+            kwargs: dict[str, Any] = {
+                "stdout": output,
+                "stderr": subprocess.STDOUT,
+                "shell": False,
+                "env": env,
+            }
             if sys.platform == "win32":
                 import psutil
                 import win32api

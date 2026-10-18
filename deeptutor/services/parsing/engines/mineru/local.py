@@ -228,7 +228,7 @@ def parse_document_with_mineru_result(
         run = current_run()
         started = activity = time.monotonic()
         quiet_reported = False
-        total_timeout = _LOCAL_PARSE_TIMEOUT_SECONDS
+        total_timeout: float = _LOCAL_PARSE_TIMEOUT_SECONDS
         try:
             configured_timeout = float(
                 (extra_env or {}).get(
