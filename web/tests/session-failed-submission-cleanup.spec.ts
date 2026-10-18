@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { deleteSession } from "@/lib/session-api";
+import { updateRecoveryPrincipal } from "@/lib/recovery-principal";
 import { moveFailedSubmissions, readFailedSubmissions, storeFailedSubmission } from "@/lib/failed-submissions";
 
 const fixture = vi.hoisted(() => ({ fetch: vi.fn() }));
@@ -9,6 +10,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 beforeEach(() => {
+  updateRecoveryPrincipal({ enabled: false, authenticated: true });
   localStorage.clear();
   sessionStorage.clear();
   fixture.fetch.mockReset();
@@ -32,15 +34,17 @@ it("preserves recovery data if the deletion request fails", async () => {
   expect(readFailedSubmissions("A")).toHaveLength(1);
 });
 
-it("does not resurrect old-format records after deletion", async () => {
-  localStorage.setItem("deeptutor.failedSubmissions", JSON.stringify({
+it("keeps unowned legacy records quarantined when a current-account session is deleted", async () => {
+  const legacy = JSON.stringify({
     A: { content: "legacy", capability: "chat", requestSnapshot: {}, savedAt: Date.now() },
     B: { content: "other", capability: "chat", requestSnapshot: {}, savedAt: Date.now() },
-  }));
+  });
+  localStorage.setItem("deeptutor.failedSubmissions", legacy);
   fixture.fetch.mockResolvedValue(new Response(JSON.stringify({ deleted: true }), { status: 200 }));
   await deleteSession("A");
   expect(readFailedSubmissions("A")).toEqual([]);
-  expect(readFailedSubmissions("B")).toHaveLength(1);
+  expect(readFailedSubmissions("B")).toEqual([]);
+  expect(localStorage.getItem("deeptutor.failedSubmissions")).toBe(legacy);
 });
 
 it("also clears the draft source of a tab-scoped session binding", async () => {
