@@ -292,6 +292,30 @@ class MasteryLoopCapability:
                         state["profile_receipt"] = receipt
 
                 updated["_profile_recorded"] = profile_recorded
+
+            if tool_name == "mastery_note_explained":
+                session_id = str(context.session_id or "").strip()
+                turn_id = str(context.metadata.get("turn_id") or "").strip()
+
+                def teaching_delivery():
+                    # A rebind must not let an earlier tool record teaching on
+                    # the new path or under another session/turn's provenance.
+                    if (
+                        str(context.metadata.get("mastery_path_id") or "").strip() != path_id
+                        or str(context.session_id or "").strip() != session_id
+                        or str(context.metadata.get("turn_id") or "").strip() != turn_id
+                    ):
+                        return None
+                    snapshot = context.extension("published_assistant_content").get("snapshot")
+                    return {
+                        "path_id": path_id,
+                        "session_id": session_id,
+                        "turn_id": turn_id,
+                        "segments": snapshot() if callable(snapshot) else (),
+                    }
+
+                # Always override model-supplied private kwargs.
+                updated["_teaching_delivery"] = teaching_delivery
             if tool_name == "mastery_mode":
                 # The narrowest handle on the turn for a tool that changes what
                 # the rest of it may do — the same shape as ``_bind_active_path``
