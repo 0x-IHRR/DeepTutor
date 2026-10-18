@@ -147,16 +147,13 @@ async def maybe_rewrite(
     when the layer is off so callers only attach provenance when active.
     """
     cfg = settings
-    if cfg is None and rewrite is None:
+    if cfg is None:
         from deeptutor.services.config import get_runtime_settings_service
 
         cfg = get_runtime_settings_service().load_query_rewrite()
-    elif cfg is None:
-        cfg = {"enabled": bool(rewrite), "strategy": STRATEGY_STANDALONE}
-    else:
-        cfg = dict(cfg)
-        if rewrite is not None:
-            cfg["enabled"] = bool(rewrite)
+    cfg = dict(cfg)
+    if rewrite is not None:
+        cfg["enabled"] = bool(rewrite)
 
     if not bool(cfg.get("enabled", False)):
         return query, None

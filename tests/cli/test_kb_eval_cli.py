@@ -356,7 +356,7 @@ def test_eval_diff_rejects_a_non_object_payload(tmp_path: Path) -> None:
     result = runner.invoke(app, ["kb", "eval-diff", str(array), str(candidate)])
 
     assert result.exit_code == 1
-    assert "is not a JSON object" in result.output
+    assert "is not a JSON object" in " ".join(result.output.split())
 
 
 def test_eval_diff_rejects_reports_at_different_k(tmp_path: Path) -> None:

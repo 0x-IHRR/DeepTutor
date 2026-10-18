@@ -295,3 +295,35 @@ def test_maybe_rewrite_failure_still_returns_original_with_outcome():
     assert out.rewritten == "what is x"
     assert out.error != ""
     assert out.applied is False
+
+
+@pytest.mark.asyncio
+async def test_per_call_enable_preserves_runtime_rewrite_configuration(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from deeptutor.services import config
+    from deeptutor.services.rag import query_rewrite
+
+    settings = _enabled_settings(
+        enabled=False, model="configured-rewrite-model", min_query_chars=20, timeout_seconds=0.25
+    )
+    monkeypatch.setattr(
+        config,
+        "get_runtime_settings_service",
+        lambda: SimpleNamespace(load_query_rewrite=lambda: settings),
+    )
+    complete = AsyncMock(return_value="resolved search terms")
+    wait_for = AsyncMock(wraps=asyncio.wait_for)
+    monkeypatch.setattr(query_rewrite.asyncio, "wait_for", wait_for)
+
+    query, outcome = await maybe_rewrite("short", rewrite=True, complete_fn=complete)
+    assert query == "short" and outcome is not None
+    complete.assert_not_awaited()
+    query, outcome = await maybe_rewrite(
+        "explain the previous chapter's main result", rewrite=True, complete_fn=complete
+    )
+    assert query == "resolved search terms" and outcome.applied
+    assert complete.await_args.kwargs["model"] == "configured-rewrite-model"
+    assert wait_for.await_args.kwargs["timeout"] == 0.25
+    assert settings["enabled"] is False
