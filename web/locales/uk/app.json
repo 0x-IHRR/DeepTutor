@@ -1,6 +1,10 @@
 {
   "Partially correct": "Частково правильно",
   "These answers could not be submitted. Please review or retry.": "Не вдалося надіслати ці відповіді. Перевірте їх або спробуйте ще раз.",
+  "The edit could not be sent. Your draft is still here; please retry.": "Не вдалося надіслати зміни. Чернетку збережено; спробуйте ще раз.",
+  "Discard unsent draft": "Видалити ненадіслану чернетку",
+  "Discarding…": "Видалення…",
+  "This draft could not be discarded. Please retry or copy it before leaving.": "Не вдалося видалити цю чернетку. Спробуйте ще раз або скопіюйте її перед виходом.",
   "language.english": "Англійська",
   "language.chinese": "Китайська",
   "language.french": "Français",

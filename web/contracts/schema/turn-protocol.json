@@ -246,7 +246,7 @@
                 "type": "string"
               },
               "maxProperties": 4,
-              "minProperties": 2,
+              "minProperties": 1,
               "type": "object"
             },
             {

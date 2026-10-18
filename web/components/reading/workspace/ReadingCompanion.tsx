@@ -106,8 +106,9 @@ export function ReadingCompanion({
     regenerateLastMessage,
     resendLastMessage,
     deleteTurn,
-    discardFailedSubmission,
     editMessage,
+    discardFailedSubmission,
+    retryFailedSubmission,
     switchBranch,
     loadMessageTrace,
     releaseMessageTrace,
@@ -448,9 +449,10 @@ export function ReadingCompanion({
             canResendLastTurn={state.lastTurnFailed}
             onResendLastTurn={resendLastMessage}
             onDeleteTurn={deleteTurn}
-            onDiscardFailedSubmission={discardFailedSubmission}
             selectedBranches={state.selectedBranches}
             onEditMessage={editMessage}
+            onDiscardFailedSubmission={discardFailedSubmission}
+            onRetryFailedSubmission={retryFailedSubmission}
             onSwitchBranch={switchBranch}
             onSubmitUserReply={submitUserReply}
             onConfirmOutline={confirmResearchOutline}

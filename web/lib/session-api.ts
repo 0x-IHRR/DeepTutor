@@ -6,6 +6,19 @@ import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
 import type { LLMSelection, StreamEvent } from "@/features/chat/model/protocol";
 import { browserReturnPath, loginHref } from "@/shared/auth/return-url";
 
+/** Fail closed when the configured backend cannot fence an uncertain send. */
+export async function supportsSubmissionReplacement(): Promise<boolean> {
+  try {
+    return await withClientCache("session-store-capabilities", async () => {
+      const response = await apiFetch(apiUrl(scopedUrl("/api/sessions/capabilities")));
+      if (!response.ok) throw new Error("Session capabilities unavailable");
+      const capabilities: unknown = await response.json();
+      return typeof capabilities === "object" && capabilities !== null &&
+        "submission_replacement" in capabilities && capabilities.submission_replacement === true;
+    });
+  } catch { return false; }
+}
+
 export interface SessionMessage {
   id: number;
   session_id: string;
@@ -305,6 +318,21 @@ export async function getSession(
     signal,
   });
   return expectJson<SessionDetail>(response);
+}
+
+export type SubmissionReplacementReceipt = {
+  status: "started"; session_id: string; submission_id: string;
+  turn: { id: string; status: string };
+};
+
+export async function replaceSubmission(
+  originalSubmissionId: string, request: Record<string, unknown>,
+): Promise<SubmissionReplacementReceipt> {
+  const { type: _type, protocol_version: _version, ...payload } = request;
+  return expectJson<SubmissionReplacementReceipt>(await apiFetch(apiUrl("/api/sessions/submission-replacement"), {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ original_submission_id: originalSubmissionId, request: payload }),
+  }));
 }
 
 /** Opening an old Watching conversation is the explicit migration boundary. */

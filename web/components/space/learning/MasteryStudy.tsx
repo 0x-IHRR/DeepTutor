@@ -181,6 +181,7 @@ export function MasteryStudy({
     resendLastMessage,
     deleteTurn,
     discardFailedSubmission,
+    retryFailedSubmission,
     editMessage,
     switchBranch,
     loadMessageTrace,
@@ -809,6 +810,7 @@ export function MasteryStudy({
                       onResendLastTurn={resendLastMessage}
                       onDeleteTurn={deleteTurn}
                       onDiscardFailedSubmission={discardFailedSubmission}
+                      onRetryFailedSubmission={retryFailedSubmission}
                       selectedBranches={state.selectedBranches}
                       onEditMessage={editMessage}
                       onSwitchBranch={switchBranch}
