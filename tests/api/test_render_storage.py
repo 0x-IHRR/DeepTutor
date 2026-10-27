@@ -160,9 +160,7 @@ def test_reveal_requires_local_origin_and_uses_validated_path(render_api, monkey
 def chat_output_api(workspace_api):
     client, service = workspace_api
     binding = service.current_binding(ensure_output=True)
-    relative = (
-        "outputs/chat/session/turn/turn-one/exec/outputs/chat/session/turn/turn-one/gap-lock.html"
-    )
+    relative = "outputs/chat/session/turn_one/exec/outputs/chat/session/turn_one/gap-lock.html"
     output = service.resolve(binding, relative, write=True)
     output.parent.mkdir(parents=True)
     output.write_text("<html>gap lock diagram</html>")

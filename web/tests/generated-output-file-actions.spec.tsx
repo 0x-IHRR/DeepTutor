@@ -19,7 +19,7 @@ const attachment = {
   generated: true,
   url,
   relative_path:
-    'outputs/chat/session/turn/turn-one/exec/outputs/chat/session/turn/turn-one/gap-lock.html',
+    'outputs/chat/session/turn_one/exec/outputs/chat/session/turn_one/gap-lock.html',
 }
 const storage = {
   file_path: '/workspace/outputs/chat/session/turn/exec/outputs/gap-lock.html',

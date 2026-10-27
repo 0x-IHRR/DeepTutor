@@ -18,11 +18,13 @@ def _chat_exec_output(
     parts = PurePosixPath(item.relative_path).parts
     if (
         not item.generated
-        or len(parts) < 8
+        or len(parts) < 10
         or parts[:2] != ("outputs", "chat")
-        or parts[3] != "turn"
-        or parts[5] != "exec"
-        or parts[6] != "outputs"
+        or not parts[3].startswith("turn_")
+        or parts[4] != "exec"
+        or parts[5] != "outputs"
+        or parts[6] != "chat"
+        or not parts[8].startswith("turn_")
         or any(part in {".", ".."} for part in parts)
     ):
         raise WorkspaceError("Only generated chat tool outputs support file actions.")

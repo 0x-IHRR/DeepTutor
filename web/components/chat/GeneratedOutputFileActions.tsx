@@ -26,12 +26,14 @@ export function supportsGeneratedOutputActions(attachment: GeneratedOutputAttach
     /^\/files\/workspace-items\/ws_[0-9a-f]{32}\/wsi_[0-9a-f]{32}(?:\?[^#]*)?$/.test(
       attachment.url || ''
     ) &&
-    parts.length >= 8 &&
+    parts.length >= 10 &&
     parts[0] === 'outputs' &&
     parts[1] === 'chat' &&
-    parts[3] === 'turn' &&
-    parts[5] === 'exec' &&
-    parts[6] === 'outputs'
+    parts[3].startsWith('turn_') &&
+    parts[4] === 'exec' &&
+    parts[5] === 'outputs' &&
+    parts[6] === 'chat' &&
+    parts[8].startsWith('turn_')
   )
 }
 
