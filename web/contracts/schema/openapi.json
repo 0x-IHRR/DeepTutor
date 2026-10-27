@@ -3818,6 +3818,21 @@
         "title": "GenerateTopicDraftRequest",
         "type": "object"
       },
+      "GeneratedOutputCleanupPayload": {
+        "description": "Bind deletion to the file details reviewed by the caller.",
+        "properties": {
+          "fingerprint": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Fingerprint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fingerprint"
+        ],
+        "title": "GeneratedOutputCleanupPayload",
+        "type": "object"
+      },
       "GitHubSourceInfo": {
         "properties": {
           "added_at": {
@@ -64551,6 +64566,188 @@
         ]
       }
     },
+    "/files/workspace-items/{workspace_id}/{workspace_item_id}/file-storage": {
+      "get": {
+        "description": "Return the local path of a generated chat tool attachment.",
+        "operationId": "chat_output_file_storage_files_workspace_items__workspace_id___workspace_item_id__file_storage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_item_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Chat Output File Storage Files Workspace Items  Workspace Id   Workspace Item Id  File Storage Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Chat Output File Storage",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
+    "/files/workspace-items/{workspace_id}/{workspace_item_id}/remove-generated-output": {
+      "post": {
+        "description": "Remove an unchanged workspace copy while retaining the chat snapshot.",
+        "operationId": "remove_chat_output_file_files_workspace_items__workspace_id___workspace_item_id__remove_generated_output_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_item_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneratedOutputCleanupPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Remove Chat Output File Files Workspace Items  Workspace Id   Workspace Item Id  Remove Generated Output Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Chat Output File",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
     "/files/workspace-items/{workspace_id}/{workspace_item_id}/render-storage": {
       "get": {
         "description": "Return the original path and a preview of reproducible render files.",
@@ -64718,6 +64915,92 @@
           }
         },
         "summary": "Reveal Render File",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
+    "/files/workspace-items/{workspace_id}/{workspace_item_id}/reveal-generated-output": {
+      "post": {
+        "description": "Select a generated chat attachment in the local desktop file manager.",
+        "operationId": "reveal_chat_output_file_files_workspace_items__workspace_id___workspace_item_id__reveal_generated_output_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_item_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Reveal Chat Output File Files Workspace Items  Workspace Id   Workspace Item Id  Reveal Generated Output Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reveal Chat Output File",
         "tags": [
           "workspace"
         ]

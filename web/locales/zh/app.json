@@ -5539,5 +5539,14 @@
   "Unable to clean render files.": "无法清理渲染文件。",
   "Render files changed. Review the storage preview again.": "渲染文件已发生变化，请重新查看清理预览。",
   "Wait for running conversations to finish before cleanup.": "请等待正在运行的对话完成后再清理。",
+  "Remove workspace file": "删除工作区文件",
+  "Remove generated file?": "删除生成的文件？",
+  "Remove the original generated file from the workspace? The chat attachment stays available.": "要从工作区删除原始生成文件吗？聊天附件仍可打开。",
+  "Removing the workspace copy keeps the chat attachment available.": "删除工作区中的文件副本后，聊天附件仍可打开。",
+  "Workspace file removed. The chat attachment is still available.": "已删除工作区文件，聊天附件仍可打开。",
+  "Unable to remove generated file.": "无法删除生成文件。",
+  "The generated file changed. Review its details again.": "生成文件已发生变化，请重新查看文件信息。",
+  "The generated file differs from its chat attachment.": "生成文件与聊天附件内容不一致，已取消删除。",
+  "Unable to load file details.": "无法读取文件信息。",
   "Workspace data is busy. Wait for active requests and tasks before retrying.": "工作区正在使用中，请等待活动请求和任务完成后重试。"
 }

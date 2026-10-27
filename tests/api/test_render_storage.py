@@ -154,3 +154,99 @@ def test_reveal_requires_local_origin_and_uses_validated_path(render_api, monkey
         == 200
     )
     assert run.call_args.args[0] == ["open", "-R", str(turn / "artifacts/movie.mp4")]
+
+
+@pytest.fixture
+def chat_output_api(workspace_api):
+    client, service = workspace_api
+    binding = service.current_binding(ensure_output=True)
+    relative = (
+        "outputs/chat/session/turn/turn-one/exec/outputs/chat/session/turn/turn-one/gap-lock.html"
+    )
+    output = service.resolve(binding, relative, write=True)
+    output.parent.mkdir(parents=True)
+    output.write_text("<html>gap lock diagram</html>")
+    item = service.publish(binding, [{"path": relative}])[0]
+    item = replace(item, url=urlsplit(item.url).path)
+    return client, service, item, output
+
+
+def test_chat_output_file_actions_preserve_the_attachment(chat_output_api):
+    client, _, item, output = chat_output_api
+    response = client.get(item.url + "/file-storage")
+    assert response.status_code == 200, response.json()
+    preview = response.json()
+    assert preview["file_path"] == str(output)
+    assert preview["file_bytes"] == output.stat().st_size
+    deleted = client.post(
+        item.url + "/remove-generated-output",
+        json={"fingerprint": preview["fingerprint"]},
+    )
+    assert deleted.status_code == 200, deleted.json()
+    assert not output.exists()
+    assert client.get(item.url).content == b"<html>gap lock diagram</html>"
+
+
+def test_chat_output_removal_refuses_changed_files(chat_output_api):
+    client, _, item, output = chat_output_api
+    preview = client.get(item.url + "/file-storage").json()
+    output.write_text("changed after preview")
+    response = client.post(
+        item.url + "/remove-generated-output",
+        json={"fingerprint": preview["fingerprint"]},
+    )
+    assert response.status_code == 409
+    assert output.exists()
+
+
+def test_chat_output_removal_refuses_active_turns(chat_output_api, monkeypatch):
+    from deeptutor.services import session
+
+    client, _, item, output = chat_output_api
+    store = SimpleNamespace(list_nonterminal_turns=AsyncMock(return_value=[{"id": "running"}]))
+    monkeypatch.setattr(session, "get_session_store", lambda: store)
+    preview = client.get(item.url + "/file-storage").json()
+    response = client.post(
+        item.url + "/remove-generated-output",
+        json={"fingerprint": preview["fingerprint"]},
+    )
+    assert response.status_code == 409
+    assert output.exists()
+
+
+def test_chat_output_actions_reject_other_paths(chat_output_api):
+    client, service, item, output = chat_output_api
+    binding = service.current_binding()
+    other = binding.root / "notes.md"
+    other.write_text("private")
+    unrelated = service.publish(binding, [{"path": "notes.md"}])[0]
+    assert client.get(unrelated.url + "/file-storage").status_code == 404
+    assert client.post(item.url + "/reveal-generated-output").status_code == 403
+    assert output.exists()
+
+
+def test_chat_output_reveal_requires_local_browser(chat_output_api, monkeypatch):
+    from deeptutor.api.routers import render_storage
+
+    client, _, item, _ = chat_output_api
+    run = Mock()
+    monkeypatch.setattr(render_storage.subprocess, "run", run)
+    monkeypatch.setattr(render_storage.sys, "platform", "darwin")
+    local = TestClient(client.app, base_url="http://localhost", client=("127.0.0.1", 1234))
+    assert local.post(item.url + "/reveal-generated-output").status_code == 403
+    response = local.post(
+        item.url + "/reveal-generated-output", headers={"origin": "http://localhost:3782"}
+    )
+    assert response.status_code == 200
+    assert run.call_args.args[0][:2] == ["open", "-R"]
+    assert run.call_args.args[0][-1].endswith("/gap-lock.html")
+
+
+def test_chat_output_actions_reject_symlinked_paths(chat_output_api, tmp_path: Path):
+    client, _, item, output = chat_output_api
+    external = tmp_path / "outside.html"
+    external.write_text("leave intact")
+    output.unlink()
+    output.symlink_to(external)
+    assert client.get(item.url + "/file-storage").status_code == 404
+    assert external.read_text() == "leave intact"

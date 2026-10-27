@@ -399,6 +399,10 @@ source code, and published playback snapshots are retained. Cleanup is blocked
 while conversations are running or the reviewed files have changed. In a remote
 deployment, the displayed path belongs to the server.
 
+Generated chat-tool file attachments also expose an **Output files** panel with
+the saved path, copy and Finder actions, and a confirmed option to remove the
+workspace copy. The immutable chat attachment remains available after removal.
+
 </details>
 
 <details>

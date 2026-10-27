@@ -11016,6 +11016,46 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/files/workspace-items/{workspace_id}/{workspace_item_id}/file-storage": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /**
+     * Chat Output File Storage
+     * @description Return the local path of a generated chat tool attachment.
+     */
+    readonly get: operations["chat_output_file_storage_files_workspace_items__workspace_id___workspace_item_id__file_storage_get"];
+    readonly put?: never;
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/files/workspace-items/{workspace_id}/{workspace_item_id}/remove-generated-output": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /**
+     * Remove Chat Output File
+     * @description Remove an unchanged workspace copy while retaining the chat snapshot.
+     */
+    readonly post: operations["remove_chat_output_file_files_workspace_items__workspace_id___workspace_item_id__remove_generated_output_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/files/workspace-items/{workspace_id}/{workspace_item_id}/render-storage": {
     readonly parameters: {
       readonly query?: never;
@@ -11050,6 +11090,26 @@ export interface paths {
      * @description Select an artifact in the local desktop file manager.
      */
     readonly post: operations["reveal_render_file_files_workspace_items__workspace_id___workspace_item_id__reveal_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/files/workspace-items/{workspace_id}/{workspace_item_id}/reveal-generated-output": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /**
+     * Reveal Chat Output File
+     * @description Select a generated chat attachment in the local desktop file manager.
+     */
+    readonly post: operations["reveal_chat_output_file_files_workspace_items__workspace_id___workspace_item_id__reveal_generated_output_post"];
     readonly delete?: never;
     readonly options?: never;
     readonly head?: never;
@@ -12890,6 +12950,14 @@ export interface components {
        * @enum {string}
        */
       readonly service: "llm" | "task";
+    };
+    /**
+     * GeneratedOutputCleanupPayload
+     * @description Bind deletion to the file details reviewed by the caller.
+     */
+    readonly GeneratedOutputCleanupPayload: {
+      /** Fingerprint */
+      readonly fingerprint: string;
     };
     /** GenerateFromNotebookRequest */
     readonly GenerateFromNotebookRequest: {
@@ -15278,7 +15346,10 @@ export interface components {
       /** Rename To */
       readonly rename_to: string;
     };
-    /** RenderCleanupPayload */
+    /**
+     * RenderCleanupPayload
+     * @description Bind cleanup to the storage inventory reviewed by the caller.
+     */
     readonly RenderCleanupPayload: {
       /** Fingerprint */
       readonly fingerprint: string;
@@ -17485,6 +17556,8 @@ export type SchemaExportDocxRequest =
   components["schemas"]["ExportDocxRequest"];
 export type SchemaFetchModelsPayload =
   components["schemas"]["FetchModelsPayload"];
+export type SchemaGeneratedOutputCleanupPayload =
+  components["schemas"]["GeneratedOutputCleanupPayload"];
 export type SchemaGenerateFromNotebookRequest =
   components["schemas"]["GenerateFromNotebookRequest"];
 export type SchemaGenerateFromReadingRequest =
@@ -42486,6 +42559,86 @@ export interface operations {
       };
     };
   };
+  readonly chat_output_file_storage_files_workspace_items__workspace_id___workspace_item_id__file_storage_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly workspace_id: string;
+        readonly workspace_item_id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly remove_chat_output_file_files_workspace_items__workspace_id___workspace_item_id__remove_generated_output_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly workspace_id: string;
+        readonly workspace_item_id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["GeneratedOutputCleanupPayload"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   readonly render_storage_files_workspace_items__workspace_id___workspace_item_id__render_storage_get: {
     readonly parameters: {
       readonly query?: never;
@@ -42525,6 +42678,44 @@ export interface operations {
     };
   };
   readonly reveal_render_file_files_workspace_items__workspace_id___workspace_item_id__reveal_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly workspace_id: string;
+        readonly workspace_item_id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly reveal_chat_output_file_files_workspace_items__workspace_id___workspace_item_id__reveal_generated_output_post: {
     readonly parameters: {
       readonly query?: never;
       readonly header?: {
