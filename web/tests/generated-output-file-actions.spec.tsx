@@ -21,6 +21,11 @@ const attachment = {
   relative_path:
     'outputs/chat/session/turn_one/exec/outputs/chat/session/turn_one/gap-lock.html',
 }
+const directAttachment = {
+  generated: true,
+  url,
+  relative_path: 'outputs/chat/session/turn_run-123/showme-next-key-lock-range.html',
+}
 const storage = {
   file_path: '/workspace/outputs/chat/session/turn/exec/outputs/gap-lock.html',
   file_bytes: 6800,
@@ -33,6 +38,7 @@ beforeEach(() => mocks.fetch.mockReset())
 
 it('offers actions only for generated chat exec outputs', () => {
   expect(supportsGeneratedOutputActions(attachment)).toBe(true)
+  expect(supportsGeneratedOutputActions(directAttachment)).toBe(true)
   expect(supportsGeneratedOutputActions({ ...attachment, generated: false })).toBe(false)
   expect(
     supportsGeneratedOutputActions({

@@ -16,15 +16,23 @@ def _chat_exec_output(
 ) -> tuple[Path, WorkspaceItem]:
     _, item = service.resolve_published_item(workspace_id, item_id)
     parts = PurePosixPath(item.relative_path).parts
+    direct_chat_output = (
+        len(parts) == 5 and parts[:2] == ("outputs", "chat") and parts[3].startswith("turn_")
+    )
     if (
         not item.generated
-        or len(parts) < 10
-        or parts[:2] != ("outputs", "chat")
-        or not parts[3].startswith("turn_")
-        or parts[4] != "exec"
-        or parts[5] != "outputs"
-        or parts[6] != "chat"
-        or not parts[8].startswith("turn_")
+        or not (
+            direct_chat_output
+            or (
+                len(parts) >= 10
+                and parts[:2] == ("outputs", "chat")
+                and parts[3].startswith("turn_")
+                and parts[4] == "exec"
+                and parts[5] == "outputs"
+                and parts[6] == "chat"
+                and parts[8].startswith("turn_")
+            )
+        )
         or any(part in {".", ".."} for part in parts)
     ):
         raise WorkspaceError("Only generated chat tool outputs support file actions.")

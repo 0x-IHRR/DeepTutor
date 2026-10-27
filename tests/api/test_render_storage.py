@@ -185,6 +185,28 @@ def test_chat_output_file_actions_preserve_the_attachment(chat_output_api):
     assert client.get(item.url).content == b"<html>gap lock diagram</html>"
 
 
+def test_direct_chat_output_file_actions_preserve_the_attachment(chat_output_api):
+    client, service, _, _ = chat_output_api
+    binding = service.current_binding()
+    relative = "outputs/chat/session/turn_run-123/showme-next-key-lock-range.html"
+    output = service.resolve(binding, relative, write=True)
+    output.parent.mkdir(parents=True)
+    output.write_text("<html>next-key-lock</html>")
+    item = service.publish(binding, [{"path": relative}])[0]
+    item = replace(item, url=urlsplit(item.url).path)
+    preview_response = client.get(item.url + "/file-storage")
+    assert preview_response.status_code == 200, preview_response.json()
+    preview = preview_response.json()
+    assert preview["file_path"] == str(output)
+    deleted = client.post(
+        item.url + "/remove-generated-output",
+        json={"fingerprint": preview["fingerprint"]},
+    )
+    assert deleted.status_code == 200, deleted.json()
+    assert not output.exists()
+    assert client.get(item.url).content == b"<html>next-key-lock</html>"
+
+
 def test_chat_output_removal_refuses_changed_files(chat_output_api):
     client, _, item, output = chat_output_api
     preview = client.get(item.url + "/file-storage").json()
